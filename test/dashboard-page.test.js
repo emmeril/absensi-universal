@@ -388,6 +388,11 @@ test("laporan kehadiran guru dapat diunduh sebagai Excel", () => {
   assert.doesNotMatch(dashboardPage, /Unduh CSV/);
 });
 
+test("tombol muat ulang berada bersama tanggal laporan harian", () => {
+  assert.match(dashboardPage, /id="studentDailyReportControls"[^>]*>.*Tanggal laporan harian siswa.*Muat ulang/);
+  assert.match(dashboardPage, /id="teacherDailyReportControls"[^>]*>.*id="teacherReportDate".*id="refreshReport"[^>]*>[^<]*<i[^>]*fa-rotate[^>]*><\/i>Muat ulang/);
+});
+
 test("export absensi siswa menyediakan rentang tanggal", () => {
   assert.match(dashboardPage, /x-model="exportStartDate"/);
   assert.match(dashboardPage, /x-model="exportEndDate"/);
