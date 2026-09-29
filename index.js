@@ -2496,6 +2496,30 @@ async function buildReportRows(user, tanggal) {
     });
 }
 
+function exportDateRange(query, fallbackDate) {
+  const startDate = query.startDate || query.date || fallbackDate;
+  const endDate = query.endDate || query.date || startDate;
+  if (!isValidDate(startDate) || !isValidDate(endDate)) {
+    throw Object.assign(new Error("Tanggal awal atau akhir tidak valid."), { status: 400 });
+  }
+  const start = Date.parse(`${startDate}T00:00:00Z`);
+  const end = Date.parse(`${endDate}T00:00:00Z`);
+  const days = Math.floor((end - start) / 86400000) + 1;
+  if (days < 1) {
+    throw Object.assign(new Error("Tanggal akhir tidak boleh sebelum tanggal awal."), { status: 400 });
+  }
+  if (days > 366) {
+    throw Object.assign(new Error("Rentang export maksimal 366 hari."), { status: 400 });
+  }
+  return {
+    startDate,
+    endDate,
+    dates: Array.from({ length: days }, (_value, index) =>
+      new Date(start + index * 86400000).toISOString().slice(0, 10)
+    ),
+  };
+}
+
 app.get("/api/report", async (req, res) => {
   const tanggal = isValidDate(req.query.date) ? req.query.date : getWaktu().tanggal;
   const rows = await buildReportRows(req.webUser, tanggal);
@@ -2503,19 +2527,33 @@ app.get("/api/report", async (req, res) => {
 });
 
 app.get("/api/export", async (req, res) => {
-  const tanggal = isValidDate(req.query.date) ? req.query.date : getWaktu().tanggal;
-  const rows = (await buildReportRows(req.webUser, tanggal)).map((row) => ({
-    Tanggal: tanggal,
-    Nama: row.nama,
-    Kelas: row.kelas === "-" ? "" : row.kelas,
-    Masuk: row.masuk === "-" ? (row.izin ? "IZIN" : "") : row.masuk,
-    StatusMasuk: row.statusMasuk === "-" ? row.izin : row.statusMasuk,
-    Pulang: row.pulang === "-" ? "" : row.pulang,
-    StatusPulang: row.statusPulang === "-" ? "" : row.statusPulang,
-  }));
-  const buffer = await exportExcel(rows);
-  res.attachment(`Rekap-${tanggal}.xlsx`);
-  res.send(buffer);
+  try {
+    if (!["admin", "wali_kelas"].includes(req.webUser.role)) {
+      return res.status(403).json({ error: "Export absensi siswa hanya tersedia untuk admin atau wali kelas." });
+    }
+    const range = exportDateRange(req.query, getWaktu().tanggal);
+    const rows = [];
+    for (const tanggal of range.dates) {
+      const dailyRows = await buildReportRows(req.webUser, tanggal);
+      rows.push(...dailyRows.map((row) => ({
+        Tanggal: tanggal,
+        Nama: row.nama,
+        Kelas: row.kelas === "-" ? "" : row.kelas,
+        Masuk: row.masuk === "-" ? (row.izin ? "IZIN" : "") : row.masuk,
+        StatusMasuk: row.statusMasuk === "-" ? row.izin : row.statusMasuk,
+        Pulang: row.pulang === "-" ? "" : row.pulang,
+        StatusPulang: row.statusPulang === "-" ? "" : row.statusPulang,
+      })));
+    }
+    const buffer = await exportExcel(rows);
+    const label = range.startDate === range.endDate
+      ? range.startDate
+      : `${range.startDate}-sampai-${range.endDate}`;
+    res.attachment(`Rekap-${label}.xlsx`);
+    res.send(buffer);
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message || "Export laporan gagal." });
+  }
 });
 
 app.get("/api/whatsapp/:key/qr.svg", requireWhatsappBotAccess, (req, res) => {

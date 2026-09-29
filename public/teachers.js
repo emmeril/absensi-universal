@@ -27,7 +27,7 @@ async function api(url, body, method = body ? "POST" : "GET") {
   return data;
 }
 async function action(fn) { try { await fn(); } catch (error) { message(error.message, true); } }
-function cell(row, value) { const td = document.createElement("td"); td.textContent = value ?? "—"; row.append(td); return td; }
+function cell(row, value) { const td = document.createElement("td"); td.textContent = value ?? "-"; row.append(td); return td; }
 function button(parent, label, fn, style = "primary") { const b = document.createElement("button"); b.type = "button"; b.className = style === "warning" ? "rounded bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 disabled:opacity-50" : "rounded bg-blue-50 px-2.5 py-1.5 text-xs text-blue-700 disabled:opacity-50"; b.textContent = label; b.onclick = () => action(async () => { b.disabled = true; try { await fn(); } finally { b.disabled = false; } }); parent.append(b); return b; }
 function teacherAction(parent, label, icon, className, fn) { const b = document.createElement("button"); b.type = "button"; b.title = label; b.setAttribute("aria-label", label); b.className = `rounded px-2.5 py-1.5 disabled:opacity-50 ${className}`; b.innerHTML = `<i class="fa-solid ${icon}"></i>`; b.onclick = () => action(async () => { b.disabled = true; try { await fn(); } finally { b.disabled = false; } }); parent.append(b); return b; }
 function emptyRow(body, columns, text) { const row = body.insertRow(); const td = cell(row, text); td.colSpan = columns; td.className = "py-10 text-center text-slate-400"; }
@@ -228,10 +228,10 @@ function renderReport() {
   const page = paginate(rows, reportTable); const body = $("teacherReport"); body.replaceChildren();
   for (const [index, r] of page.rows.entries()) {
     const row = body.insertRow(); cell(row, page.start + index + 1); cell(row, r.name); cell(row, `${r.schedule.start}–${r.schedule.end} · ${r.schedule.className} · ${r.schedule.subject}`);
-    cell(row, r.arrival ? `${new Date(r.arrival).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" })}${r.lateMinutes ? ` (terlambat ${r.lateMinutes} menit)` : ""}` : "—");
+    cell(row, r.arrival ? `${new Date(r.arrival).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" })}${r.lateMinutes ? ` (terlambat ${r.lateMinutes} menit)` : ""}` : "-");
     cell(row, attendanceStatus(r)); cell(row, r.material);
     const photos = cell(row, ""); if (r.hasSelfie) photoLink(photos, r.key, "selfie", "Selfie"); if (r.hasEvidence) photoLink(photos, r.key, "evidence", "Kegiatan");
-    const review = cell(row, r.review || "—");
+    const review = cell(row, r.review || "-");
     if (r.reviewNote) { const note = document.createElement("p"); note.className = "mt-2 text-xs text-slate-500"; note.textContent = r.reviewNote; review.append(note); }
     if (r.hasEvidence) {
       const controls = document.createElement("div"); controls.className = "mt-2 flex flex-wrap gap-2"; review.append(controls);
@@ -362,10 +362,19 @@ $("teacherPermissionForm").onsubmit = (event) => {
   });
 };
 $("teacherReportDate").value = today; $("teacherSummaryDate").value = today; $("teacherPermissionDate").value = today;
+$("teacherExportStartDate").value = today; $("teacherExportEndDate").value = today;
+$("teacherExportStartDate").max = today; $("teacherExportEndDate").min = today;
+$("teacherExportStartDate").onchange = () => { $("teacherExportEndDate").min = $("teacherExportStartDate").value; };
+$("teacherExportEndDate").onchange = () => { $("teacherExportStartDate").max = $("teacherExportEndDate").value; };
 $("teacherReportDate").onchange = () => action(loadReport); $("refreshReport").onclick = () => action(loadReport);
 $("teacherSummaryDate").onchange = () => action(loadSummary);
 $("teacherPermissionDate").onchange = () => action(loadPermissions);
-$("exportReport").onclick = () => { window.location.assign(`/api/teachers/report/export?date=${encodeURIComponent($("teacherReportDate").value)}`); };
+$("exportReport").onclick = () => {
+  const startDate = $("teacherExportStartDate").value, endDate = $("teacherExportEndDate").value;
+  if (!startDate || !endDate) { message("Pilih tanggal awal dan akhir export.", true); return; }
+  if (endDate < startDate) { message("Tanggal akhir tidak boleh sebelum tanggal awal.", true); return; }
+  window.location.assign(`/api/teachers/report/export?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`);
+};
 function showPanel(id) {
   for (const panel of root.querySelectorAll("[data-teacher-panel]")) panel.hidden = panel.id !== id;
 }

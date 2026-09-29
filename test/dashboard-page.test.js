@@ -382,8 +382,22 @@ test("jadwal guru memakai dropdown data master mata pelajaran dan kelas", () => 
 
 test("laporan kehadiran guru dapat diunduh sebagai Excel", () => {
   assert.match(dashboardPage, /id="exportReport"[^>]*>[^<]*<i[^>]*fa-file-excel[^>]*><\/i>Unduh Excel<\/button>/);
-  assert.match(teacherScript, /\/report\/export\?date=/);
+  assert.match(dashboardPage, /id="teacherExportStartDate"/);
+  assert.match(dashboardPage, /id="teacherExportEndDate"/);
+  assert.match(teacherScript, /\/report\/export\?startDate=/);
   assert.doesNotMatch(dashboardPage, /Unduh CSV/);
+});
+
+test("export absensi siswa menyediakan rentang tanggal", () => {
+  assert.match(dashboardPage, /x-model="exportStartDate"/);
+  assert.match(dashboardPage, /x-model="exportEndDate"/);
+  assert.match(dashboardPage, /\/api\/export\?startDate=/);
+});
+
+test("export rentang tanggal mengikuti menu role wali kelas dan tata usaha", () => {
+  assert.match(dashboardPage, /return this\.tabs\.filter\(item=>\["ringkasan","siswa","whatsapp"\]\.includes\(item\.id\)\)/);
+  assert.match(dashboardPage, /"laporan-guru"/);
+  assert.match(dashboardPage, /this\.user\?\.role==="tu"/);
 });
 
 test("izin guru memakai modal serta aksi edit dan hapus", () => {

@@ -60,7 +60,7 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   const app = express();
   const ids = { a: "62111@c.us", b: "62222@c.us", deleted: "62333@c.us" };
   app.use((req, res, next) => {
-    req.webUser = { id: req.query.user, role: req.query.user === "admin" ? "admin" : "wali_kelas" };
+    req.webUser = { id: req.query.user, role: req.query.user === "admin" ? "admin" : req.query.user === "tu" ? "tu" : "wali_kelas" };
     next();
   });
   const context = {
@@ -99,6 +99,29 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   }));
   assert.deepEqual(results[0].map((row) => row.Nama), ["Student A", "Former Student"]);
   assert.deepEqual(results[1].map((row) => row.Nama), ["Student A", "Student B", "Former Student"]);
+
+  const rangeResponse = await fetch(`${url}?user=admin&startDate=2026-09-08&endDate=2026-09-09`);
+  assert.equal(rangeResponse.status, 200);
+  assert.match(rangeResponse.headers.get("content-disposition"), /Rekap-2026-09-08-sampai-2026-09-09\.xlsx/);
+  const rangeWorkbook = new ExcelJS.Workbook();
+  await rangeWorkbook.xlsx.load(Buffer.from(await rangeResponse.arrayBuffer()));
+  const rangeSheet = rangeWorkbook.getWorksheet("Rekap");
+  assert.deepEqual(
+    rangeSheet.getRows(2, rangeSheet.rowCount - 1).map((row) => row.getCell(1).value),
+    ["2026-09-08", "2026-09-08", "2026-09-08", "2026-09-09", "2026-09-09", "2026-09-09"]
+  );
+  const waliRangeResponse = await fetch(`${url}?user=teacher&startDate=2026-09-08&endDate=2026-09-09`);
+  assert.equal(waliRangeResponse.status, 200);
+  const waliRangeWorkbook = new ExcelJS.Workbook();
+  await waliRangeWorkbook.xlsx.load(Buffer.from(await waliRangeResponse.arrayBuffer()));
+  const waliRangeSheet = waliRangeWorkbook.getWorksheet("Rekap");
+  assert.deepEqual(
+    waliRangeSheet.getRows(2, waliRangeSheet.rowCount - 1).map((row) => row.getCell(2).value),
+    ["Student A", "Former Student", "Student A", "Former Student"]
+  );
+  assert.equal((await fetch(`${url}?user=admin&startDate=2026-09-10&endDate=2026-09-09`)).status, 400);
+  assert.equal((await fetch(`${url}?user=admin&startDate=2025-01-01&endDate=2026-01-02`)).status, 400);
+  assert.equal((await fetch(`${url}?user=tu&startDate=2026-09-08&endDate=2026-09-09`)).status, 403);
 });
 
 test("QR dan reset WhatsApp dibatasi sesuai kepemilikan bot wali", () => {
