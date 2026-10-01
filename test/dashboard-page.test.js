@@ -100,6 +100,21 @@ test("tombol dashboard memiliki target sentuh dan susunan mobile yang konsisten"
   assert.match(dashboardPage, /aria-label="Tutup dialog"/);
 });
 
+test("isi semua tabel tetap sejajar dalam satu baris", () => {
+  assert.match(
+    dashboardPage,
+    /\.data-table th, \.data-table td \{[^}]*vertical-align: middle;[^}]*white-space: nowrap;/,
+  );
+  assert.match(
+    dashboardStyles,
+    /\.data-table td > \[class="flex justify-center gap-1"\] \{[^}]*flex-wrap: nowrap;/,
+  );
+  assert.match(
+    dashboardStyles,
+    /\[class\*="overflow-x-auto"\] \+ \[class\*="mt-4"\] \{[^}]*flex-direction: column;/,
+  );
+});
+
 test("tombol kamera dan izin menumpuk penuh pada layar sempit", () => {
   for (const file of ["camera.html", "permission.html"]) {
     const page = fs.readFileSync(path.join(root, "public", file), "utf8");

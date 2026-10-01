@@ -54,6 +54,7 @@ button:disabled {
 }
 
 .data-table td > [class="flex justify-center gap-1"] {
+  flex-wrap: nowrap;
   gap: .5rem;
 }
 
@@ -119,6 +120,16 @@ button:disabled {
   .dashboard-modal > div {
     margin-top: max(.75rem, env(safe-area-inset-top));
     margin-bottom: max(.75rem, env(safe-area-inset-bottom));
+  }
+
+  [class*="overflow-x-auto"] + [class*="mt-4"] {
+    align-items: stretch;
+    flex-direction: column;
+    gap: .75rem;
+  }
+
+  [class*="overflow-x-auto"] + [class*="mt-4"] > [class="flex gap-1"] {
+    justify-content: center;
   }
 }
 
