@@ -43,6 +43,17 @@ test("role dashboard hanya administrator dan pengelola unit", () => {
   assert.match(server, /\["admin", "wali_kelas"\]\.includes\(role\)/);
 });
 
+test("unit kosong dapat dipilih saat menambah pengelola unit", () => {
+  assert.match(
+    dashboardPage,
+    /:disabled="Boolean\(k\.waliKelas && k\.nama!==adminForm\.className\)"/,
+  );
+  assert.doesNotMatch(
+    dashboardPage,
+    /:disabled="k\.namaWali && k\.nama!==adminForm\.className"/,
+  );
+});
+
 test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /label:"Absen Anggota"/);
   assert.doesNotMatch(dashboardPage, /teacherMenuOpen/);
