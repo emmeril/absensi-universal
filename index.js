@@ -666,7 +666,7 @@ function logVerificationFailure(context, userId, error) {
   const expected =
     error.code === "FACE_JOB_ACTIVE" ||
     (error.code === "FACE_NOT_DETECTED" && /foto selfie/i.test(error.message)) ||
-    /^(?:Kamu berada di luar area sekolah|Wajah tidak (?:dikenali|ditemukan))/.test(
+    /^(?:Kamu berada di luar area kegiatan|Wajah tidak (?:dikenali|ditemukan))/.test(
       error.message
     );
   const label = expected ? "DITOLAK" : "ERROR";
@@ -745,10 +745,10 @@ function teksBantuan(role, terdaftar) {
     lines.push(
       "",
       "Akses: Administrator",
-      "• *!lokasi* - Mengatur titik lokasi sekolah melalui salah satu bot wali kelas. Setelah perintah ini, bagikan lokasi sekolah melalui fitur Lokasi WhatsApp.",
+      "• *!lokasi* - Mengatur titik lokasi kegiatan melalui salah satu bot pengelola unit. Setelah perintah ini, bagikan lokasi kegiatan melalui fitur Lokasi WhatsApp.",
       "• *!bantuan* - Menampilkan daftar perintah yang tersedia untuk role kamu.",
       "",
-      `Pengelolaan siswa, kelas, jadwal, izin, admin, dan laporan tersedia di dashboard: ${publicBaseUrl()}`
+      `Pengelolaan anggota, unit, jadwal, izin, admin, dan laporan tersedia di dashboard: ${publicBaseUrl()}`
     );
     return lines.join("\n");
   }
@@ -756,10 +756,10 @@ function teksBantuan(role, terdaftar) {
   if (role === "wali_kelas") {
     lines.push(
       "",
-      "Akses: Wali Kelas",
+      "Akses: Pengelola Unit",
       "• *!bantuan* - Menampilkan daftar perintah yang tersedia untuk role kamu.",
       "",
-      `Data siswa dan foto referensi kelas dikelola melalui dashboard: ${publicBaseUrl()}`
+      `Data anggota dan foto referensi unit dikelola melalui dashboard: ${publicBaseUrl()}`
     );
     return lines.join("\n");
   }
@@ -767,7 +767,7 @@ function teksBantuan(role, terdaftar) {
   if (terdaftar) {
     lines.push(
       "",
-      "Akses: Siswa Terdaftar",
+      "Akses: Anggota Terdaftar",
       "• *!masuk* - Memulai absensi masuk dan menerima tautan kamera sekali pakai.",
       "• *!pulang* - Memulai absensi pulang dan menerima tautan kamera sekali pakai.",
       "• *!izin alasan* - Mengajukan izin melalui tautan verifikasi dan unggah bukti.",
@@ -781,7 +781,7 @@ function teksBantuan(role, terdaftar) {
     "Akses: Belum Terdaftar",
     "• *!bantuan* - Menampilkan bantuan dasar.",
     "",
-    "Nomor kamu belum terdaftar untuk absensi. Hubungi admin sekolah agar dapat menggunakan perintah absensi."
+    "Nomor kamu belum terdaftar untuk absensi. Hubungi administrator organisasi agar dapat menggunakan perintah absensi."
   );
   return lines.join("\n");
 }
@@ -915,9 +915,9 @@ async function catatAbsensiKamera(userId, tipe, lokasi, foto, botKey) {
         longitude: 108.5522,
       });
       if (haversine(lokasi, lokasiKantor) > ATTENDANCE_RADIUS_METERS) {
-        throw new Error("Kamu berada di luar area sekolah.");
+        throw new Error("Kamu berada di luar area kegiatan.");
       }
-      if (!kontak[userId]) throw new Error("Siswa sudah tidak terdaftar.");
+      if (!kontak[userId]) throw new Error("Anggota sudah tidak terdaftar.");
 
       const normalizedStatus = await attendanceStatus(waktu.tanggal, userId);
       const permission = loadJSONSelected(
@@ -1132,12 +1132,12 @@ whatsapp.on("message", safeAsyncListener(async ({
     }
     await saveJSON(LOKASI_PATH, validation.location);
     pendingLokasi.delete(pendingLocationKey);
-    return replyCommand("✅ Lokasi sekolah disimpan.");
+    return replyCommand("✅ Lokasi kegiatan disimpan.");
   }
   if (body === "!lokasi" || body === "!setlokasi") {
     if (role !== "admin") return replyCommand("❌ Hanya administrator yang dapat mengatur lokasi.");
     pendingLokasi.set(pendingLocationKey, Date.now() + LOCATION_REQUEST_TTL_MS);
-    return replyCommand("📍 Bagikan lokasi sekolah sekarang melalui fitur Lokasi WhatsApp.");
+    return replyCommand("📍 Bagikan lokasi kegiatan sekarang melalui fitur Lokasi WhatsApp.");
   }
 
   const kelasSiswa = findKelasSiswa(loadKelas(), sender);
@@ -1153,12 +1153,12 @@ whatsapp.on("message", safeAsyncListener(async ({
     return replyCommand(
       beradaDiBotWali
         ? teksBantuan("user", true)
-        : "Nomor ini adalah bot absensi wali kelas. Kamu belum terdaftar pada kelas yang dilayani bot ini."
+        : "Nomor ini adalah bot absensi pengelola unit. Kamu belum terdaftar pada unit yang dilayani bot ini."
     );
   }
   if (!beradaDiBotWali && body.startsWith("!")) {
     return replyCommand(
-      "❌ Kamu tidak terdaftar di kelas yang dilayani nomor wali ini. Hubungi admin sekolah."
+      "❌ Kamu tidak terdaftar di unit yang dilayani nomor pengelola ini. Hubungi administrator organisasi."
     );
   }
   if (!body.startsWith("!")) return;
@@ -1196,7 +1196,7 @@ whatsapp.on("message", safeAsyncListener(async ({
 
     if (!fs.existsSync(`${FACE_REC}/${nomor}.jpg`)) {
       return replyCommand(
-        "⚠️ Foto referensi wajah belum ada. Hubungi admin atau wali kelas untuk mengunggah foto melalui dashboard."
+        "⚠️ Foto referensi wajah belum ada. Hubungi administrator atau pengelola unit untuk mengunggah foto melalui dashboard."
       );
     }
 
@@ -1302,7 +1302,7 @@ function requireWhatsappBotAccess(req, res, next) {
     bot.expectedNumber === req.webUser.nomor;
   if (req.webUser?.role !== "admin" && !ownsBot) {
     return res.status(403).json({
-      error: "Wali kelas hanya dapat mengelola sesi WhatsApp miliknya.",
+      error: "Pengelola unit hanya dapat mengelola sesi WhatsApp miliknya.",
     });
   }
   req.whatsappBot = bot;
@@ -1319,7 +1319,7 @@ function requireWebPhotoManager(req, res, next) {
   }
 
   return res.status(403).json({
-    error: "Wali kelas hanya dapat mengunggah foto siswa di kelasnya.",
+    error: "Pengelola unit hanya dapat mengunggah foto anggota di unitnya.",
   });
 }
 
@@ -1344,7 +1344,7 @@ app.get("/api/permission-camera/:token", (req, res) => {
   }
   const kontak = loadJSON(KONTAK_PATH);
   res.json({
-    nama: kontak[session.userId] || "Siswa",
+    nama: kontak[session.userId] || "Anggota",
     alasan: session.alasan,
     expiresAt: session.expiresAt,
     verified: session.verified,
@@ -1437,7 +1437,7 @@ app.post("/api/permission-camera/:token/evidence", async (req, res) => {
       [IZIN_PATH, KONTAK_PATH],
       async (draft) => {
         if (!draft[KONTAK_PATH][session.userId]) {
-          throw new Error("Siswa sudah tidak terdaftar.");
+          throw new Error("Anggota sudah tidak terdaftar.");
         }
         if (session.tanggal !== getWaktu().tanggal) {
           throw new Error("Tautan sudah melewati tanggal pengajuan.");
@@ -1463,9 +1463,9 @@ app.post("/api/permission-camera/:token/evidence", async (req, res) => {
           waliKelas: kelasSiswa?.waliKelas || "",
         };
         const caption =
-          `📩 *Pengajuan Izin Siswa*\n` +
+          `📩 *Pengajuan Izin Anggota*\n` +
           `👤 Nama: *${kontak[session.userId] || session.userId}*\n` +
-          `🏫 Kelas: ${kelasSiswa?.namaKelas || "-"}\n` +
+          `🏢 Unit: ${kelasSiswa?.namaKelas || "-"}\n` +
           `📅 Tanggal: ${session.tanggal}\n` +
           `📌 Alasan: ${session.alasan}\n` +
           `✅ Wajah terverifikasi dan lokasi tercatat`;
@@ -1522,7 +1522,7 @@ app.get("/api/attendance-camera/:token", (req, res) => {
   const kontak = loadJSON(KONTAK_PATH);
   res.json({
     tipe: session.tipe,
-    nama: kontak[session.userId] || "Siswa",
+    nama: kontak[session.userId] || "Anggota",
     expiresAt: session.expiresAt,
   });
 });
@@ -1803,12 +1803,12 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
       if (role === "wali_kelas") {
         const assignedClass = draft[KELAS_PATH][className];
         if (!className || !assignedClass) {
-          const error = new Error("Pilih kelas yang akan diampu wali kelas.");
+          const error = new Error("Pilih unit yang akan dikelola pengelola unit.");
           error.code = "CLASS_REQUIRED";
           throw error;
         }
         if (assignedClass.waliKelas && assignedClass.waliKelas !== id) {
-          const error = new Error("Kelas tersebut sudah memiliki wali kelas.");
+          const error = new Error("Unit tersebut sudah memiliki pengelola unit.");
           error.code = "CLASS_ASSIGNED";
           throw error;
         }
@@ -1870,18 +1870,18 @@ app.delete("/api/admins/:number", requireWebAdmin, async (req, res) => {
 app.post("/api/classes", requireWebAdmin, async (req, res) => {
   const nama = String(req.body.nama || "").trim().toUpperCase();
   const originalNama = String(req.body.originalNama || "").trim().toUpperCase();
-  if (!nama) return res.status(400).json({ error: "Nama kelas belum valid." });
+  if (!nama) return res.status(400).json({ error: "Nama unit belum valid." });
   try {
     await updateJSON([KELAS_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
       if (originalNama) {
         if (!kelas[originalNama]) {
-          const error = new Error("Kelas yang diedit tidak ditemukan.");
+          const error = new Error("Unit yang diedit tidak ditemukan.");
           error.code = "NOT_FOUND";
           throw error;
         }
         if (originalNama !== nama && kelas[nama]) {
-          const error = new Error("Nama kelas baru sudah digunakan.");
+          const error = new Error("Nama unit baru sudah digunakan.");
           error.code = "ALREADY_EXISTS";
           throw error;
         }
@@ -1890,7 +1890,7 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
           delete kelas[originalNama];
         }
       } else if (kelas[nama]) {
-        const error = new Error("Kelas tersebut sudah tersedia.");
+        const error = new Error("Unit tersebut sudah tersedia.");
         error.code = "ALREADY_EXISTS";
         throw error;
       }
@@ -1912,12 +1912,12 @@ app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
     await updateJSON([KELAS_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
       if (!kelas[nama]) {
-        const error = new Error("Kelas tidak ditemukan.");
+        const error = new Error("Unit tidak ditemukan.");
         error.code = "NOT_FOUND";
         throw error;
       }
       if (Object.keys(kelas[nama].siswa || {}).length) {
-        const error = new Error("Pindahkan siswa sebelum menghapus kelas.");
+        const error = new Error("Pindahkan anggota sebelum menghapus unit.");
         error.code = "NOT_EMPTY";
         throw error;
       }
@@ -1941,19 +1941,19 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
   const namaKelas = String(req.body.kelas || "").trim().toUpperCase();
   const orangTua = normalizeNomor(req.body.orangTua);
   if (!/^62\d{8,14}$/.test(nomor) || nama.length < 3) {
-    return res.status(400).json({ error: "Nomor atau nama siswa belum valid." });
+    return res.status(400).json({ error: "Nomor atau nama anggota belum valid." });
   }
   if (originalNomor && !/^62\d{8,14}$/.test(originalNomor)) {
-    return res.status(400).json({ error: "Nomor siswa sebelumnya tidak valid." });
+    return res.status(400).json({ error: "Nomor anggota sebelumnya tidak valid." });
   }
 
   const siswaId = `${nomor}@c.us`;
   const originalSiswaId = originalNomor ? `${originalNomor}@c.us` : "";
   if (namaKelas && !loadKelas()[namaKelas]) {
-    return res.status(400).json({ error: "Kelas belum tersedia." });
+    return res.status(400).json({ error: "Unit belum tersedia." });
   }
   if (namaKelas && !/^62\d{8,14}$/.test(orangTua)) {
-    return res.status(400).json({ error: "Nomor orang tua belum valid." });
+    return res.status(400).json({ error: "Nomor kontak darurat belum valid." });
   }
 
   try {
@@ -1963,16 +1963,16 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
         const kontak = draft[KONTAK_PATH];
         const kelas = draft[KELAS_PATH];
         if (namaKelas && !kelas[namaKelas]) {
-          throw new Error("Kelas tidak lagi tersedia.");
+          throw new Error("Unit tidak lagi tersedia.");
         }
         if (originalSiswaId) {
           if (!kontak[originalSiswaId]) {
-            const error = new Error("Siswa yang diedit tidak ditemukan.");
+            const error = new Error("Anggota yang diedit tidak ditemukan.");
             error.code = "NOT_FOUND";
             throw error;
           }
           if (originalSiswaId !== siswaId && kontak[siswaId]) {
-            const error = new Error("Nomor WhatsApp baru sudah digunakan siswa lain.");
+            const error = new Error("Nomor WhatsApp baru sudah digunakan anggota lain.");
             error.code = "ALREADY_EXISTS";
             throw error;
           }
@@ -2038,7 +2038,7 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
     }
   }
   void whatsapp.sync(loadKelas()).catch((error) => {
-    console.error("[Baileys] Gagal memperbarui daftar siswa bot wali:", error.message);
+    console.error("[Baileys] Gagal memperbarui daftar anggota bot pengelola:", error.message);
   });
   res.json({ ok: true });
 });
@@ -2072,9 +2072,9 @@ app.delete("/api/students/:number", requireWebAdmin, async (req, res) => {
   }, async ({ result, transaction }) => {
     if (result) await fillAttendanceSnapshot(siswaId, result, { transaction });
   });
-  if (!foundStudent) return res.status(404).json({ error: "Siswa tidak ditemukan." });
+  if (!foundStudent) return res.status(404).json({ error: "Anggota tidak ditemukan." });
   for (const root of [FACE_DB, FACE_REC]) {
-    deletePrivateFileSafely(path.join(root, `${nomor}.jpg`), root, `foto siswa ${nomor}`);
+    deletePrivateFileSafely(path.join(root, `${nomor}.jpg`), root, `foto anggota ${nomor}`);
   }
   for (const [token, session] of [...cameraSessions, ...permissionSessions]) {
     if (session.userId === siswaId) {
@@ -2083,7 +2083,7 @@ app.delete("/api/students/:number", requireWebAdmin, async (req, res) => {
     }
   }
   void whatsapp.sync(loadKelas()).catch((error) => {
-    console.error("[Baileys] Gagal memperbarui daftar siswa bot wali:", error.message);
+    console.error("[Baileys] Gagal memperbarui daftar anggota bot pengelola:", error.message);
   });
   res.json({ ok: true });
 });
@@ -2096,7 +2096,7 @@ app.post(
     const nomor = normalizeNomor(req.params.number);
     const siswaId = `${nomor}@c.us`;
     if (!loadJSON(KONTAK_PATH)[siswaId]) {
-      return res.status(404).json({ error: "Siswa tidak ditemukan." });
+      return res.status(404).json({ error: "Anggota tidak ditemukan." });
     }
     if (!req.file) {
       return res.status(400).json({ error: "Pilih file foto yang valid." });
@@ -2234,7 +2234,7 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
       async (draft) => {
         const kontak = draft[KONTAK_PATH];
         const kelasSiswa = findKelasSiswa(draft[KELAS_PATH], siswaId);
-        if (!kontak[siswaId]) throw new Error("Siswa sudah tidak terdaftar.");
+        if (!kontak[siswaId]) throw new Error("Anggota sudah tidak terdaftar.");
         const attendance = await attendanceStatus(tanggal, siswaId);
         const permissionError = validatePermission({
           ...attendance,
@@ -2255,9 +2255,9 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
         };
         if (!kelasSiswa) return [];
         const pesan =
-          `📩 *Izin Siswa*\n` +
+          `📩 *Izin Anggota*\n` +
           `👤 Nama: *${kontak[siswaId]}*\n` +
-          `🏫 Kelas: ${kelasSiswa.namaKelas}\n` +
+          `🏢 Unit: ${kelasSiswa.namaKelas}\n` +
           `📅 Tanggal: ${tanggal}\n` +
           `📌 Alasan: ${alasan}`;
         const botKey = `wali:${normalizeNomor(kelasSiswa.waliKelas)}`;
@@ -2312,7 +2312,7 @@ app.get("/api/permissions/:date/:number/evidence", (req, res) => {
     permission?.waliKelas !== req.webUser.id &&
     !findKelasSiswa(kelasUntukWali(loadKelas(), req.webUser.id), siswaId)
   ) {
-    return res.status(403).json({ error: "Siswa bukan anggota kelas kamu." });
+    return res.status(403).json({ error: "Anggota tersebut bukan bagian dari unit kamu." });
   }
   const bukti = permission?.bukti;
   if (!isManagedPath(bukti, IZIN_BUKTI_DIR) || !fs.existsSync(bukti)) {
@@ -2345,7 +2345,7 @@ async function buildReportRows(user, tanggal) {
       const snapshot = attendance.masuk || attendance.pulang || permission || {};
       return {
         nomor: id.replace("@c.us", ""),
-        nama: kontak[id] || snapshot.nama || "Siswa tidak aktif",
+        nama: kontak[id] || snapshot.nama || "Anggota tidak aktif",
         kelas: findKelasSiswa(kelas, id)?.namaKelas || snapshot.kelas || "-",
         masuk: attendance.masuk?.waktu || "-",
         statusMasuk: attendance.masuk?.status || "-",
@@ -2391,7 +2391,7 @@ app.get("/api/report", async (req, res) => {
 app.get("/api/export", async (req, res) => {
   try {
     if (!["admin", "wali_kelas"].includes(req.webUser.role)) {
-      return res.status(403).json({ error: "Export absensi siswa hanya tersedia untuk admin atau wali kelas." });
+      return res.status(403).json({ error: "Export absensi anggota hanya tersedia untuk administrator atau pengelola unit." });
     }
     const range = exportDateRange(req.query, getWaktu().tanggal);
     const rows = [];
