@@ -79,6 +79,12 @@ test("tabel anggota tetap memiliki filter, sortir, dan pagination", () => {
   assert.match(dashboardPage, /nextPage\('students',filteredStudents\.length\)/);
 });
 
+test("kontak darurat anggota bersifat opsional", () => {
+  assert.match(dashboardPage, /WhatsApp Kontak Darurat \(opsional\)/);
+  assert.match(server, /if \(orangTua && !\/\^62\\d\{8,14\}\$\/\.test\(orangTua\)\)/);
+  assert.match(server, /orangTua: orangTua \? `\$\{orangTua\}@c\.us` : ""/);
+});
+
 test("laporan anggota menyediakan tanggal dan ekspor", () => {
   assert.match(dashboardPage, /studentDailyReportControls/);
   assert.match(dashboardPage, /exportStudentReport\(\)/);

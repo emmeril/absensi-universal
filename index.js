@@ -1952,7 +1952,7 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
   if (namaKelas && !loadKelas()[namaKelas]) {
     return res.status(400).json({ error: "Unit belum tersedia." });
   }
-  if (namaKelas && !/^62\d{8,14}$/.test(orangTua)) {
+  if (orangTua && !/^62\d{8,14}$/.test(orangTua)) {
     return res.status(400).json({ error: "Nomor kontak darurat belum valid." });
   }
 
@@ -2006,7 +2006,7 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
           kelas[namaKelas].siswa ||= {};
           kelas[namaKelas].siswa[siswaId] = {
             nama,
-            orangTua: `${orangTua}@c.us`,
+            orangTua: orangTua ? `${orangTua}@c.us` : "",
           };
         }
       },
