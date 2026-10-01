@@ -28,6 +28,7 @@
       .status-box { min-height: 3rem; border-left: 4px solid var(--leaf); border-radius: 4px 12px 12px 4px; background: rgba(18, 55, 42, .07); font-size: .875rem; font-weight: 700; line-height: 1.35rem; }
       .btn-forest { --bs-btn-bg: var(--forest); --bs-btn-border-color: var(--forest); --bs-btn-hover-bg: #0b291f; --bs-btn-hover-border-color: #0b291f; --bs-btn-disabled-bg: var(--forest); --bs-btn-disabled-border-color: var(--forest); color: #fff; font-weight: 900; min-height: 3.25rem; }
       .btn-outline-forest { --bs-btn-color: var(--forest); --bs-btn-border-color: rgba(18, 55, 42, .3); --bs-btn-hover-bg: var(--forest); --bs-btn-hover-border-color: var(--forest); font-weight: 900; min-height: 3.25rem; background: rgba(255, 255, 255, .7); }
+      .btn:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; box-shadow: none; }
       .success-card { width: min(100%, 36rem); border: 1px solid rgba(18, 55, 42, .18); border-radius: 8px 36px 36px 36px; background: rgba(255, 255, 255, .78); box-shadow: 0 1.5rem 4rem rgba(18, 55, 42, .14); }
       .success-icon { width: 5.5rem; height: 5.5rem; color: #fff; background: var(--forest); font-size: 3rem; font-weight: 900; box-shadow: 0 .75rem 2rem rgba(18, 55, 42, .25); }
       @media (max-width: 991.98px) { .page-shell { max-width: 38rem; } .page-header { margin-bottom: 1.5rem; } .hero-copy { text-align: center; margin-inline: auto; } .camera-frame { max-height: 56vh; } }
@@ -57,9 +58,9 @@
               </div>
               <div class="status-box d-flex align-items-center px-3 py-2" id="status">Memeriksa tautan absensi...</div>
               <div class="row g-2">
-                <div class="col-12"><button class="btn btn-forest w-100" id="capture" disabled>Ambil selfie</button></div>
-                <div class="col-6"><button class="btn btn-outline-forest w-100" id="retake" hidden>Foto ulang</button></div>
-                <div class="col-6"><button class="btn btn-forest w-100" id="submit" hidden>Kirim absensi</button></div>
+                <div class="col-12"><button type="button" class="btn btn-forest w-100" id="capture" disabled>Ambil selfie</button></div>
+                <div class="col-12 col-sm-6"><button type="button" class="btn btn-outline-forest w-100" id="retake" hidden>Foto ulang</button></div>
+                <div class="col-12 col-sm-6"><button type="button" class="btn btn-forest w-100" id="submit" hidden>Kirim absensi</button></div>
               </div>
             </section>
           </div>

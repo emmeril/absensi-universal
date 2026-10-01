@@ -1,3 +1,134 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+button,
+[role="button"],
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select {
+  min-height: 2.75rem;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+label[for]:focus-within {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.bg-\[\#3c8dbc\] {
+  background-color: #337da8;
+}
+
+.hover\:bg-\[\#337da8\]:hover {
+  background-color: #285f80 !important;
+}
+
+.data-table td button,
+.data-table td label[title],
+.pagination-actions button,
+.dialog-close {
+  display: inline-grid;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+}
+
+.table-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: .5rem;
+}
+
+.data-table td > [class="flex justify-center gap-1"] {
+  gap: .5rem;
+}
+
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.pagination-actions > span {
+  display: grid;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+}
+
+[class*="overflow-x-auto"] + [class*="mt-4"] > [class="flex gap-1"] {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+[class*="overflow-x-auto"] + [class*="mt-4"] > [class="flex gap-1"] > button,
+[class*="overflow-x-auto"] + [class*="mt-4"] > [class="flex gap-1"] > span {
+  display: grid;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+}
+
+.dashboard-modal form > .border-t:last-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  gap: .5rem;
+}
+
+.dashboard-modal form > .border-t:last-child > button {
+  width: 100%;
+}
+
+@media (max-width: 639px) {
+  .admin-card > div > div[x-show] > .mb-5.flex {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .admin-card > div > div[x-show] > .mb-5.flex > button {
+    width: 100%;
+  }
+
+  .admin-card button:not(.sort-button),
+  .dashboard-modal button {
+    padding-top: .6875rem;
+    padding-bottom: .6875rem;
+  }
+
+  .dashboard-modal {
+    padding: .75rem;
+  }
+
+  .dashboard-modal > div {
+    margin-top: max(.75rem, env(safe-area-inset-top));
+    margin-bottom: max(.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 640px) {
+  .dashboard-modal form > .border-t:last-child {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .dashboard-modal form > .border-t:last-child > button {
+    width: auto;
+  }
+}

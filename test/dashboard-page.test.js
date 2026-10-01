@@ -6,6 +6,7 @@ const path = require("node:path");
 const root = path.join(__dirname, "..");
 const dashboardPage = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
 const server = fs.readFileSync(path.join(root, "index.js"), "utf8");
+const dashboardStyles = fs.readFileSync(path.join(root, "assets", "dashboard.css"), "utf8");
 
 test("dashboard hanya memuat aset lokal", () => {
   assert.doesNotMatch(dashboardPage, /https?:\/\//);
@@ -83,4 +84,27 @@ test("menu akun menyediakan informasi pengguna dan logout", () => {
   assert.match(dashboardPage, /userMenuOpen/);
   assert.match(dashboardPage, /roleLabel\(user\?\.role\)/);
   assert.match(dashboardPage, /@click="logout\(\)"/);
+});
+
+test("tombol dashboard memiliki target sentuh dan susunan mobile yang konsisten", () => {
+  assert.match(dashboardStyles, /min-height: 2\.75rem/);
+  assert.match(dashboardStyles, /min-width: 2\.75rem/);
+  assert.match(dashboardStyles, /button:focus-visible/);
+  assert.match(dashboardStyles, /@media \(max-width: 639px\)/);
+  assert.match(
+    dashboardStyles,
+    /\.admin-card > div > div\[x-show\] > \.mb-5\.flex \{[\s\S]*?gap: 1rem/,
+  );
+  assert.match(dashboardStyles, /dashboard-modal form > \.border-t:last-child/);
+  assert.match(dashboardPage, /aria-label="Buka atau tutup menu navigasi"/);
+  assert.match(dashboardPage, /aria-label="Tutup dialog"/);
+});
+
+test("tombol kamera dan izin menumpuk penuh pada layar sempit", () => {
+  for (const file of ["camera.html", "permission.html"]) {
+    const page = fs.readFileSync(path.join(root, "public", file), "utf8");
+    assert.match(page, /col-12 col-sm-6/);
+    assert.match(page, /\.btn:focus-visible/);
+    assert.doesNotMatch(page, /<div class="col-6">/);
+  }
 });

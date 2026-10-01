@@ -27,6 +27,7 @@
       .face-guide { pointer-events: none; position: absolute; inset: 12% 16%; border: 2px dashed rgba(224, 242, 254, .8); border-radius: 48%; box-shadow: 0 0 0 999px rgba(7, 21, 34, .25); }
       .btn-navy { --bs-btn-color: #fff; --bs-btn-bg: var(--navy); --bs-btn-border-color: var(--navy); --bs-btn-hover-color: #fff; --bs-btn-hover-bg: #0e253a; --bs-btn-hover-border-color: #0e253a; --bs-btn-disabled-color: #fff; --bs-btn-disabled-bg: var(--navy); --bs-btn-disabled-border-color: var(--navy); --bs-btn-disabled-opacity: .62; color: #fff; font-weight: 900; min-height: 3.25rem; }
       .btn-outline-navy { --bs-btn-color: var(--navy); --bs-btn-border-color: rgba(23, 50, 77, .3); --bs-btn-hover-bg: var(--navy); --bs-btn-hover-border-color: var(--navy); font-weight: 900; min-height: 3.25rem; background: rgba(255, 255, 255, .7); }
+      .btn:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; box-shadow: none; }
       .evidence-card { width: 100%; max-width: 31rem; margin-inline: auto; border: 1px solid rgba(23, 50, 77, .14); border-radius: 12px 32px 32px 32px; background: var(--paper); box-shadow: 0 1.5rem 4rem rgba(23, 50, 77, .14); backdrop-filter: blur(12px); }
       .evidence-actions { display: grid; gap: 1rem; }
       .evidence-actions .btn { height: auto; padding: .8rem 1rem; line-height: 1.35; white-space: normal; }
@@ -60,9 +61,9 @@
               </div>
               <div class="info-box d-flex align-items-center px-3 py-2" id="status">Memeriksa tautan izin...</div>
               <div class="row g-2">
-                <div class="col-12"><button class="btn btn-navy w-100" id="capture" disabled>Ambil selfie</button></div>
-                <div class="col-6"><button class="btn btn-outline-navy w-100" id="retake" hidden>Foto ulang</button></div>
-                <div class="col-6"><button class="btn btn-navy w-100" id="verify" hidden>Verifikasi wajah</button></div>
+                <div class="col-12"><button type="button" class="btn btn-navy w-100" id="capture" disabled>Ambil selfie</button></div>
+                <div class="col-12 col-sm-6"><button type="button" class="btn btn-outline-navy w-100" id="retake" hidden>Foto ulang</button></div>
+                <div class="col-12 col-sm-6"><button type="button" class="btn btn-navy w-100" id="verify" hidden>Verifikasi wajah</button></div>
               </div>
             </section>
             <section class="evidence-card p-4 p-sm-5" id="evidenceStage" hidden>
@@ -73,7 +74,7 @@
                 <label class="btn btn-outline-navy d-flex align-items-center justify-content-center w-100" for="evidence">Pilih atau foto bukti</label>
                 <input class="visually-hidden" id="evidence" type="file" accept="image/jpeg,image/png" />
                 <img class="proof-image rounded-3" id="proof" alt="Pratinjau bukti izin" hidden />
-                <button class="btn btn-navy w-100" id="submitEvidence" disabled>Kirim pengajuan izin</button>
+                <button type="button" class="btn btn-navy w-100" id="submitEvidence" disabled>Kirim pengajuan izin</button>
               </div>
             </section>
           </div>
