@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ruang Hadir | Panel Administrasi</title>
     <link rel="stylesheet" href="/dashboard.css" />
+    <script defer src="/universal-copy.js"></script>
     <script defer src="/teachers.js"></script>
     <script defer src="/vendor/alpine.min.js"></script>
     <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css" />
@@ -44,8 +45,8 @@
     <section x-show="authChecked && !user" x-cloak class="fixed inset-0 z-50 grid min-h-screen bg-[#d9e2e8] lg:grid-cols-[1.1fr_.9fr]">
       <div class="relative hidden overflow-hidden bg-gradient-to-br from-[#18344a] via-[#245b79] to-[#3c8dbc] p-16 text-white lg:flex lg:flex-col lg:justify-between">
         <div class="absolute -right-28 -top-28 h-96 w-96 rounded-full border-[70px] border-white/5"></div><div class="absolute -bottom-36 -left-28 h-96 w-96 rounded-full bg-white/5"></div>
-        <div class="relative flex items-center gap-3"><div class="grid h-12 w-12 overflow-hidden place-items-center rounded bg-white text-xl font-black text-[#3c8dbc]"><template x-if="brand.hasLogo"><img :src="brand.logoUrl" :alt="'Logo ' + brand.name" class="h-full w-full object-contain p-1" /></template><template x-if="!brand.hasLogo"><span x-text="brandInitials"></span></template></div><div><strong class="text-xl" x-text="brand.name"></strong><p class="text-sm text-white/60">Sistem Absensi Sekolah</p></div></div>
-        <div class="relative max-w-xl"><p class="mb-4 text-sm font-bold uppercase tracking-[.25em] text-cyan-200">Administrasi lebih sederhana</p><h1 class="text-5xl font-bold leading-tight">Pantau kehadiran siswa dan guru dalam satu panel.</h1><p class="mt-5 text-lg leading-8 text-white/70">Kelola siswa, guru, kelas, jadwal mengajar, izin, dan laporan harian secara cepat dan terpusat.</p></div>
+        <div class="relative flex items-center gap-3"><div class="grid h-12 w-12 overflow-hidden place-items-center rounded bg-white text-xl font-black text-[#3c8dbc]"><template x-if="brand.hasLogo"><img :src="brand.logoUrl" :alt="'Logo ' + brand.name" class="h-full w-full object-contain p-1" /></template><template x-if="!brand.hasLogo"><span x-text="brandInitials"></span></template></div><div><strong class="text-xl" x-text="brand.name"></strong><p class="text-sm text-white/60">Sistem Absensi Universal</p></div></div>
+        <div class="relative max-w-xl"><p class="mb-4 text-sm font-bold uppercase tracking-[.25em] text-cyan-200">Kehadiran dalam satu tempat</p><h1 class="text-5xl font-bold leading-tight">Pantau anggota dan petugas dalam satu panel.</h1><p class="mt-5 text-lg leading-8 text-white/70">Kelola anggota, petugas, unit, jadwal tugas, izin, dan laporan harian untuk organisasi Anda.</p></div>
         <p class="relative text-sm text-white/45"><span x-text="brand.name"></span> &copy; 2026</p>
       </div>
       <div class="grid place-items-center px-5 py-10">
@@ -91,7 +92,7 @@
       </header>
 
     <main class="mx-auto min-w-0 max-w-[1500px] px-3 py-5 sm:px-7 sm:py-6">
-      <div class="mb-5 min-w-0 sm:mb-6"><h2 class="flex min-w-0 items-center text-xl font-bold text-slate-800 sm:text-2xl"><i class="mr-2 shrink-0 text-[#3c8dbc]" :class="currentTab.icon"></i><span class="truncate" x-text="currentTab.label"></span></h2><p class="mt-1 text-sm text-slate-500">Kelola data dan aktivitas absensi sekolah.</p></div>
+      <div class="mb-5 min-w-0 sm:mb-6"><h2 class="flex min-w-0 items-center text-xl font-bold text-slate-800 sm:text-2xl"><i class="mr-2 shrink-0 text-[#3c8dbc]" :class="currentTab.icon"></i><span class="truncate" x-text="currentTab.label"></span></h2><p class="mt-1 text-sm text-slate-500">Kelola data dan aktivitas kehadiran organisasi.</p></div>
       <section x-show="!isTeacherPage && !isSettingsTab" class="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <template x-for="card in cards" :key="card.label">
           <div class="paper-edge rounded-lg p-5 shadow-card" :style="`--accent:${card.color}`">
@@ -301,7 +302,7 @@
       function dashboard() {
         return {
           tab: "ringkasan", modal: "", editing: false, sidebarOpen: false, sidebarCollapsed: false, settingsMenuOpen: false, userMenuOpen: false, brandSaving: false, brandLogoFile: null, brandLogoPreview: "", loading: true, toast: "", toastType: "ok", authChecked: false, authLoading: false, showLoginPassword: false, showAdminPassword: false, whatsappRefreshKey: Date.now(), whatsappTimer: null, user: null, loginError: "", login: {username:"",password:""}, brand: {name:"Ruang Hadir",hasLogo:false,logoUrl:""}, brandForm: {name:"Ruang Hadir"}, data: { siswa: [], kelas: [], admins: [], jam: {}, whatsappBots: [] }, report: { rows: [] }, reportDate: "", exportStartDate: "", exportEndDate: "",
-          tabs: [{id:"ringkasan",label:"Ringkasan",icon:"fa-solid fa-chart-pie"},{id:"siswa",label:"Siswa",icon:"fa-solid fa-user-graduate"},{id:"kelas",label:"Kelas",icon:"fa-solid fa-school"},{id:"ringkasan-guru",label:"Ringkasan",icon:"fa-solid fa-chart-pie"},{id:"guru",label:"Data Guru",icon:"fa-solid fa-chalkboard-user"},{id:"mapel-guru",label:"Mata Pelajaran",icon:"fa-solid fa-book-open"},{id:"kelas-guru",label:"Kelas",icon:"fa-solid fa-school"},{id:"jam-guru",label:"Jam Mengajar",icon:"fa-solid fa-calendar-days"},{id:"izin-guru",label:"Izin",icon:"fa-solid fa-file-circle-check"},{id:"laporan-guru",label:"Laporan Kehadiran Guru",icon:"fa-solid fa-clipboard-check"},{id:"bot-tu",label:"Bot Guru",icon:"fa-brands fa-whatsapp"},{id:"izin",label:"Izin",icon:"fa-solid fa-file-circle-check"},{id:"brand",label:"Pengaturan Brand",icon:"fa-solid fa-palette"},{id:"pengaturan",label:"Pengaturan Jadwal",icon:"fa-solid fa-calendar-days"},{id:"whatsapp",label:"Bot Siswa",icon:"fa-brands fa-whatsapp"},{id:"admin",label:"Management User",icon:"fa-solid fa-user-shield"}],
+          tabs: [{id:"ringkasan",label:"Ringkasan",icon:"fa-solid fa-chart-pie"},{id:"siswa",label:"Anggota",icon:"fa-solid fa-users"},{id:"kelas",label:"Unit",icon:"fa-solid fa-layer-group"},{id:"ringkasan-guru",label:"Ringkasan",icon:"fa-solid fa-chart-pie"},{id:"guru",label:"Data Petugas",icon:"fa-solid fa-user-tie"},{id:"mapel-guru",label:"Aktivitas",icon:"fa-solid fa-list-check"},{id:"kelas-guru",label:"Unit",icon:"fa-solid fa-layer-group"},{id:"jam-guru",label:"Jadwal Tugas",icon:"fa-solid fa-calendar-days"},{id:"izin-guru",label:"Izin",icon:"fa-solid fa-file-circle-check"},{id:"laporan-guru",label:"Laporan Kehadiran Petugas",icon:"fa-solid fa-clipboard-check"},{id:"bot-tu",label:"Bot Petugas",icon:"fa-brands fa-whatsapp"},{id:"izin",label:"Izin",icon:"fa-solid fa-file-circle-check"},{id:"brand",label:"Pengaturan Brand",icon:"fa-solid fa-palette"},{id:"pengaturan",label:"Pengaturan Jadwal",icon:"fa-solid fa-calendar-days"},{id:"whatsapp",label:"Bot Anggota",icon:"fa-brands fa-whatsapp"},{id:"admin",label:"Manajemen Pengguna",icon:"fa-solid fa-user-shield"}],
           tables: {
             report:{search:"",classFilter:"",statusFilter:"",sortKey:"",sortDirection:"asc",page:1,size:10},
             students:{search:"",classFilter:"",photoFilter:"",sortKey:"",sortDirection:"asc",page:1,size:10},
@@ -310,7 +311,7 @@
             admins:{search:"",accountFilter:"",roleFilter:"",sortKey:"",sortDirection:"asc",page:1,size:10}
           },
           student: { originalNomor:"", nomor:"", nama:"", kelas:"", orangTua:"" }, classForm: { originalNama:"", nama:"" }, permission: { nomor:"", tanggal:"", alasan:"" }, adminForm: { originalNomor:"", nomor:"", nama:"", username:"", password:"", role:"admin", className:"" }, time: { masuk:"07:00", pulang:"14:00", toleransi:0, mulaiMasuk:"00:00", selesaiMasuk:"23:59", mulaiPulang:"00:00", selesaiPulang:"23:59" },
-          get cards() { const hadir=this.data.siswa.filter(s=>s.masuk).length, izin=this.data.siswa.filter(s=>s.izin).length; return [{label:"Total siswa",value:this.data.siswa.length,icon:"fa-solid fa-user-graduate",color:"#3c8dbc"},{label:"Hadir hari ini",value:hadir,icon:"fa-solid fa-circle-check",color:"#00a65a"},{label:"Belum hadir",value:Math.max(0,this.data.siswa.length-hadir-izin),icon:"fa-solid fa-clock",color:"#f39c12"},{label:"Izin",value:izin,icon:"fa-solid fa-file-circle-check",color:"#dd4b39"}]; },
+          get cards() { const hadir=this.data.siswa.filter(s=>s.masuk).length, izin=this.data.siswa.filter(s=>s.izin).length; return [{label:"Total anggota",value:this.data.siswa.length,icon:"fa-solid fa-users",color:"#3c8dbc"},{label:"Hadir hari ini",value:hadir,icon:"fa-solid fa-circle-check",color:"#00a65a"},{label:"Belum hadir",value:Math.max(0,this.data.siswa.length-hadir-izin),icon:"fa-solid fa-clock",color:"#f39c12"},{label:"Izin",value:izin,icon:"fa-solid fa-file-circle-check",color:"#dd4b39"}]; },
           get currentTab(){ return this.tabs.find(item=>item.id===this.tab)||this.tabs[0]; },
           get visibleTabs() { if(this.user?.role==="admin")return this.tabs;if(this.user?.role==="tu")return this.tabs.filter(item=>["ringkasan-guru","guru","mapel-guru","kelas-guru","jam-guru","izin-guru","laporan-guru","bot-tu"].includes(item.id));return this.tabs.filter(item=>["ringkasan","siswa","whatsapp"].includes(item.id)); },
           studentMenuOpen: true, teacherMenuOpen: false,
@@ -319,10 +320,10 @@
           get isTeacherTab(){return this.teacherTabs.some(item=>item.id===this.tab);},
           get isTeacherPage(){return this.isTeacherTab||this.tab==="bot-tu";},
           get visibleWhatsappBots(){return (this.data.whatsappBots||[]).filter(bot=>this.tab==="bot-tu"?bot.role==="tu":bot.role!=="tu");},
-          get attendanceGroups(){return [{id:"student",label:"Absen Siswa",icon:"fa-solid fa-user-graduate",open:this.studentMenuOpen,items:this.mainTabs},{id:"teacher",label:"Absen Guru",icon:"fa-solid fa-chalkboard-user",open:this.teacherMenuOpen,items:this.teacherTabs}];},
+          get attendanceGroups(){return [{id:"student",label:"Absen Anggota",icon:"fa-solid fa-users",open:this.studentMenuOpen,items:this.mainTabs},{id:"teacher",label:"Absen Petugas",icon:"fa-solid fa-user-tie",open:this.teacherMenuOpen,items:this.teacherTabs}];},
           get settingsTabs(){return ["brand","whatsapp","bot-tu","admin"].map(id=>this.visibleTabs.find(item=>item.id===id)).filter(Boolean);},
           get isSettingsTab(){return this.settingsTabs.some(item=>item.id===this.tab);},
-          roleLabel(role){return ({admin:"Administrator",tu:"Tata Usaha",wali_kelas:"Wali Kelas"})[role]||"Pengguna";},
+          roleLabel(role){return ({admin:"Administrator",tu:"Operator",wali_kelas:"Pengelola Unit"})[role]||"Pengguna";},
           get brandInitials(){const words=String(this.brandForm.name||this.brand.name||"RH").trim().split(/\s+/);return words.slice(0,2).map(word=>word[0]||"").join("").toUpperCase()||"RH";},
           get filteredReport(){
             const t=this.tables.report,q=t.search.toLowerCase();
@@ -379,7 +380,7 @@
             });
           },
           get pagedAdmins(){return this.paginate(this.sortRows(this.filteredAdmins,"admins"),"admins");},
-          get modalTitle(){return {student:this.editing?"Edit Siswa":"Tambah Siswa",class:this.editing?"Edit Kelas":"Tambah Kelas",permission:"Tambah Izin",admin:this.editing?"Edit User":"Tambah User",time:"Ubah Jadwal Absensi"}[this.modal]||"Form Data";},
+          get modalTitle(){return {student:this.editing?"Edit Anggota":"Tambah Anggota",class:this.editing?"Edit Unit":"Tambah Unit",permission:"Tambah Izin",admin:this.editing?"Edit Pengguna":"Tambah Pengguna",time:"Ubah Jadwal Absensi"}[this.modal]||"Form Data";},
           async init(){ this.sidebarCollapsed=localStorage.getItem("sidebarCollapsed")==="true";await this.loadBrand();try{this.user=await this.request("/api/auth/me");if(this.user.role==="tu")this.tab="ringkasan-guru";await this.loadDashboard();this.openRequestedTab();}catch(e){this.user=null;}finally{this.authChecked=true;} },
           async loadDashboard(){ await this.refresh();this.reportDate=this.data.tanggal;this.exportStartDate=this.data.tanggal;this.exportEndDate=this.data.tanggal;this.permission.tanggal=this.data.tanggal;await this.loadReport(); },
           toggleSidebar(){if(innerWidth<1024)this.sidebarOpen=!this.sidebarOpen;else{this.sidebarCollapsed=!this.sidebarCollapsed;localStorage.setItem("sidebarCollapsed",this.sidebarCollapsed);}},
@@ -436,19 +437,19 @@
           async request(url, options={}){ const res=await fetch(url,{headers:options.body instanceof FormData?{}:{"Content-Type":"application/json"},...options}); const body=res.headers.get("content-type")?.includes("json")?await res.json():{}; if(!res.ok) throw new Error(body.error||"Permintaan gagal"); return body; },
           notify(message,type="ok"){ this.toast=message; this.toastType=type; setTimeout(()=>this.toast="",3000); },
           async act(fn,message,reloadReport=false){ try { await fn(); await this.refresh();if(reloadReport)await this.loadReport();this.closeModal();this.notify(message); } catch(e){ this.notify(e.message,"error"); } },
-          saveStudent(){ return this.act(async()=>{await this.request("/api/students",{method:"POST",body:JSON.stringify(this.student)});},"Data siswa tersimpan"); },
+          saveStudent(){ return this.act(async()=>{await this.request("/api/students",{method:"POST",body:JSON.stringify(this.student)});},"Data anggota tersimpan"); },
           editStudent(s){ this.editing=true;this.student={originalNomor:s.nomor,nomor:s.nomor,nama:s.nama,kelas:s.kelas,orangTua:s.orangTua};this.modal="student"; },
-          removeStudent(s){ if(confirm(`Hapus ${s.nama}?`)) this.act(()=>this.request(`/api/students/${s.nomor}`,{method:"DELETE"}),"Siswa dihapus"); },
-          saveClass(){ return this.act(()=>this.request("/api/classes",{method:"POST",body:JSON.stringify(this.classForm)}),"Kelas tersimpan"); },
+          removeStudent(s){ if(confirm(`Hapus ${s.nama}?`)) this.act(()=>this.request(`/api/students/${s.nomor}`,{method:"DELETE"}),"Anggota dihapus"); },
+          saveClass(){ return this.act(()=>this.request("/api/classes",{method:"POST",body:JSON.stringify(this.classForm)}),"Unit tersimpan"); },
           editClass(k){this.editing=true;this.classForm={originalNama:k.nama,nama:k.nama};this.modal="class";},
-          removeClass(k){ if(confirm(`Hapus kelas ${k.nama}?`)) this.act(()=>this.request(`/api/classes/${encodeURIComponent(k.nama)}`,{method:"DELETE"}),"Kelas dihapus"); },
+          removeClass(k){ if(confirm(`Hapus unit ${k.nama}?`)) this.act(()=>this.request(`/api/classes/${encodeURIComponent(k.nama)}`,{method:"DELETE"}),"Unit dihapus"); },
           async uploadPhoto(number,event){ const file=event.target.files[0]; if(!file)return; const form=new FormData();form.append("photo",file); await this.act(()=>this.request(`/api/students/${number}/photo`,{method:"POST",body:form}),"Foto referensi tersimpan"); },
           savePermission(){ return this.act(()=>this.request("/api/permissions",{method:"POST",body:JSON.stringify(this.permission)}),"Izin tersimpan",true); },
           removePermission(row){if(confirm(`Hapus izin ${row.nama}?`))this.act(()=>this.request(`/api/permissions/${this.report.tanggal}/${row.nomor}`,{method:"DELETE"}),"Izin dihapus",true);},
           saveAdmin(){ return this.act(()=>this.request("/api/admins",{method:"POST",body:JSON.stringify(this.adminForm)}),this.editing?"User diperbarui":"User baru ditambahkan"); },
           editAdmin(admin){this.editing=true;this.showAdminPassword=false;this.adminForm={originalNomor:admin.nomor,nomor:admin.nomor,nama:admin.nama,username:admin.username||"",password:"",role:admin.role||"admin",className:admin.className||""};this.modal="admin";},
           removeAdmin(nomor){ if(confirm(`Hapus user ${nomor}?`)) return this.act(()=>this.request(`/api/admins/${nomor}`,{method:"DELETE"}),"User dihapus"); },
-          saveTime(){ return this.act(()=>this.request("/api/settings/time",{method:"POST",body:JSON.stringify(this.time)}),"Jam sekolah diperbarui"); },
+          saveTime(){ return this.act(()=>this.request("/api/settings/time",{method:"POST",body:JSON.stringify(this.time)}),"Jadwal organisasi diperbarui"); },
           async loadReport(){ try{this.report=await this.request(`/api/report?date=${this.reportDate}`);this.tables.report.page=1;this.tables.permissions.page=1;}catch(e){this.notify(e.message,"error");} },
           exportStudentReport(){if(!this.exportStartDate||!this.exportEndDate){this.notify("Pilih tanggal awal dan akhir export.","error");return;}if(this.exportEndDate<this.exportStartDate){this.notify("Tanggal akhir tidak boleh sebelum tanggal awal.","error");return;}window.location.assign(`/api/export?startDate=${encodeURIComponent(this.exportStartDate)}&endDate=${encodeURIComponent(this.exportEndDate)}`);},
         };

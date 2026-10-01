@@ -1,8 +1,12 @@
+const path = require("node:path");
+const runtimeDir = __dirname;
+
 module.exports = {
   apps: [
     {
-      name: "absensi-bot",
-      script: "./index.js",
+      name: "absensi-universal",
+      script: path.resolve(__dirname, "index.js"),
+      cwd: runtimeDir,
       instances: 1,
       exec_mode: "fork",
       time: true,
@@ -16,7 +20,14 @@ module.exports = {
       env: {
         TZ: "Asia/Jakarta",
         NODE_ENV: "production",
+        PORT: "3201",
+        PUBLIC_BASE_URL:
+          process.env.UNIVERSAL_PUBLIC_BASE_URL || "https://hadir.moboakses.online",
+        SESSION_COOKIE_SECURE: "true",
+        TRUST_PROXY_HOPS: "1",
+        DB_PATH: path.join(runtimeDir, "data", "absensi.sqlite"),
         FACE_WORKER_COUNT: "1",
+        FACE_MODEL_PATH: path.join(runtimeDir, "models"),
         FACE_QUEUE_LIMIT: "100",
         FACE_ESTIMATED_JOB_MS: "2500",
         FACE_TIMEOUT_MS: "60000",
@@ -35,7 +46,7 @@ module.exports = {
         WA_SEND_RETRY_BASE_DELAY_MS: "5000",
         WA_SEND_RETRY_MAX_DELAY_MS: "60000",
         WA_SEND_RETRY_JITTER_RATIO: "0.35",
-        BAILEYS_AUTH_DATA_PATH: "./.baileys_auth",
+        BAILEYS_AUTH_DATA_PATH: path.join(runtimeDir, ".baileys_auth"),
         WA_LOG_LEVEL: "silent",
       },
     },

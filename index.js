@@ -79,8 +79,11 @@ const {
   validateAttendance,
   validatePermission,
 } = require("./lib/attendance-rules");
+const { toUniversalTerms } = require("./public/universal-copy");
 const app = express();
-const PORT = 3200;
+const PORT = Number(process.env.PORT) || 3200;
+const configuredPublicBaseUrl = String(process.env.PUBLIC_BASE_URL || "");
+const publicBaseUsesHttps = /^https:\/\//i.test(configuredPublicBaseUrl);
 const CAMERA_SESSION_TTL_MS = 2 * 60 * 1000;
 const PERMISSION_SESSION_TTL_MS = 5 * 60 * 1000;
 const LOCATION_REQUEST_TTL_MS = 5 * 60 * 1000;
@@ -126,10 +129,12 @@ app.use(
         baseUri: ["'none'"],
         frameAncestors: ["'none'"],
         formAction: ["'self'"],
-        upgradeInsecureRequests:
-          process.env.NODE_ENV === "production" ? [] : null,
+        upgradeInsecureRequests: publicBaseUsesHttps ? [] : null,
       },
     },
+    strictTransportSecurity: publicBaseUsesHttps
+      ? { maxAge: 31536000, includeSubDomains: true }
+      : false,
     referrerPolicy: { policy: "no-referrer" },
   })
 );
@@ -138,11 +143,22 @@ app.use("/api", (_req, res, next) => {
   res.setHeader("Pragma", "no-cache");
   next();
 });
+app.use("/api", (_req, res, next) => {
+  const sendJson = res.json.bind(res);
+  res.json = (body) => {
+    if (body && typeof body === "object" && !Array.isArray(body)) {
+      if (typeof body.error === "string") body = { ...body, error: toUniversalTerms(body.error) };
+      if (typeof body.message === "string") body = { ...body, message: toUniversalTerms(body.message) };
+    }
+    return sendJson(body);
+  };
+  next();
+});
 app.use("/api/auth/login", loginLimiter);
 app.use("/api/attendance-camera", cameraRequestLimiter);
 app.use("/api/permission-camera", cameraRequestLimiter);
 app.use(express.json({ limit: "10mb" }));
-app.use(express.static("public"));
+app.use(express.static(path.resolve(__dirname, "public")));
 app.get("/vendor/alpine.min.js", (_req, res) =>
   res.sendFile(require.resolve("alpinejs/dist/cdn.min.js"))
 );
@@ -717,7 +733,7 @@ function dashboardUserName(id, role) {
     if (wali?.namaWali) return wali.namaWali;
   }
 
-  return ({ admin: "Administrator", tu: "Tata Usaha", wali_kelas: "Wali Kelas" })[role] || "Pengguna";
+  return ({ admin: "Administrator", tu: "Operator", wali_kelas: "Pengelola Unit" })[role] || "Pengguna";
 }
 
 async function syncWaliKelasToTeachers() {
@@ -1093,8 +1109,8 @@ notificationOutboxProcessor = new NotificationOutboxProcessor({
     return sendWhatsappWithRetry(
       () =>
         media
-          ? whatsapp.sendImage(job.botKey, job.recipientId, media, job.text)
-          : whatsapp.sendText(job.botKey, job.recipientId, job.text),
+          ? whatsapp.sendImage(job.botKey, job.recipientId, media, toUniversalTerms(job.text))
+          : whatsapp.sendText(job.botKey, job.recipientId, toUniversalTerms(job.text)),
       {
         recipientId: `${job.botKey}:${job.recipientId}`,
         priority: job.priority > 0 ? "high" : "normal",
@@ -1180,7 +1196,7 @@ whatsapp.on("message", safeAsyncListener(async ({
   async function replyCommand(message) {
     const replyStartedAt = Date.now();
     try {
-      return await sendWhatsappWithRetry(() => msg.reply(message), {
+      return await sendWhatsappWithRetry(() => msg.reply(toUniversalTerms(message)), {
         recipientId: `${botKey}:${sender}`,
         priority: "high",
         senderKey: botKey,
@@ -2538,7 +2554,7 @@ app.get("/api/export", async (req, res) => {
       rows.push(...dailyRows.map((row) => ({
         Tanggal: tanggal,
         Nama: row.nama,
-        Kelas: row.kelas === "-" ? "" : row.kelas,
+        Unit: row.kelas === "-" ? "" : row.kelas,
         Masuk: row.masuk === "-" ? (row.izin ? "IZIN" : "") : row.masuk,
         StatusMasuk: row.statusMasuk === "-" ? row.izin : row.statusMasuk,
         Pulang: row.pulang === "-" ? "" : row.pulang,

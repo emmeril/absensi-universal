@@ -31,9 +31,9 @@ test("dashboard login memakai username dan password tanpa OTP", () => {
   assert.doesNotMatch(dashboardPage, /request-otp|Kode OTP|verifyOtp/);
 });
 
-test("halaman login mencakup pengelolaan absensi guru", () => {
-  assert.match(dashboardPage, /Pantau kehadiran siswa dan guru dalam satu panel/);
-  assert.match(dashboardPage, /Kelola siswa, guru, kelas, jadwal mengajar, izin, dan laporan harian/);
+test("halaman login mengenalkan sistem absensi universal", () => {
+  assert.match(dashboardPage, /Pantau anggota dan petugas dalam satu panel/);
+  assert.match(dashboardPage, /Kelola anggota, petugas, unit, jadwal tugas, izin, dan laporan harian/);
 });
 
 test("form management user mengelola akun admin dan wali kelas", () => {
@@ -74,8 +74,8 @@ test("semua input password memiliki placeholder dan tombol tampilkan password", 
   assert.match(dashboardPage, /aria-label/);
 });
 
-test("koneksi WhatsApp tersedia untuk admin dan wali kelas", () => {
-  assert.match(dashboardPage, /id:"whatsapp",label:"Bot Siswa"/);
+test("koneksi WhatsApp tersedia untuk admin dan pengelola unit", () => {
+  assert.match(dashboardPage, /id:"whatsapp",label:"Bot Anggota"/);
   assert.match(dashboardPage, /\["ringkasan","siswa","whatsapp"\]/);
   assert.match(dashboardPage, /tab === 'whatsapp'/);
   assert.match(dashboardPage, /\/api\/whatsapp\/\$\{encodeURIComponent\(bot\.key\)\}\/qr\.svg/);
@@ -84,7 +84,7 @@ test("koneksi WhatsApp tersedia untuk admin dan wali kelas", () => {
   assert.doesNotMatch(dashboardPage, /title="Status WhatsApp"/);
 });
 
-test("sidebar memisahkan absen siswa, absen guru, dan pengaturan umum", () => {
+test("sidebar memisahkan absen anggota, absen petugas, dan pengaturan umum", () => {
   assert.match(dashboardPage, /group in attendanceGroups/);
   assert.match(dashboardPage, /item in settingsTabs/);
   assert.match(dashboardPage, /toggleSettingsMenu\(\)/);
@@ -108,11 +108,11 @@ test("sidebar memisahkan absen siswa, absen guru, dan pengaturan umum", () => {
   ]);
   assert.deepEqual(Array.from(state.settingsTabs, (item) => item.label), [
     "Pengaturan Brand",
-    "Bot Siswa",
-    "Bot Guru",
-    "Management User",
+    "Bot Anggota",
+    "Bot Petugas",
+    "Manajemen Pengguna",
   ]);
-  assert.deepEqual(Array.from(state.teacherTabs, (item) => item.label), ["Ringkasan", "Data Guru", "Mata Pelajaran", "Kelas", "Jam Mengajar", "Izin", "Laporan Kehadiran Guru"]);
+  assert.deepEqual(Array.from(state.teacherTabs, (item) => item.label), ["Ringkasan", "Data Petugas", "Aktivitas", "Unit", "Jadwal Tugas", "Izin", "Laporan Kehadiran Petugas"]);
   state.data.whatsappBots = [{ role: "tu", key: "tu:1" }, { role: "wali", key: "wali:2" }];
   state.tab = "bot-tu";
   assert.deepEqual(Array.from(state.visibleWhatsappBots, bot => bot.key), ["tu:1"]);
@@ -124,13 +124,13 @@ test("sidebar memisahkan absen siswa, absen guru, dan pengaturan umum", () => {
     "ringkasan",
     "siswa",
   ]);
-  assert.deepEqual(Array.from(state.settingsTabs, (item) => item.label), ["Bot Siswa"]);
+  assert.deepEqual(Array.from(state.settingsTabs, (item) => item.label), ["Bot Anggota"]);
   assert.deepEqual(Array.from(state.teacherTabs), []);
 
   state.user = { role: "tu" };
   assert.deepEqual(Array.from(state.mainTabs), []);
-  assert.deepEqual(Array.from(state.teacherTabs, (item) => item.label), ["Ringkasan", "Data Guru", "Mata Pelajaran", "Kelas", "Jam Mengajar", "Izin", "Laporan Kehadiran Guru"]);
-  assert.deepEqual(Array.from(state.settingsTabs, (item) => item.label), ["Bot Guru"]);
+  assert.deepEqual(Array.from(state.teacherTabs, (item) => item.label), ["Ringkasan", "Data Petugas", "Aktivitas", "Unit", "Jadwal Tugas", "Izin", "Laporan Kehadiran Petugas"]);
+  assert.deepEqual(Array.from(state.settingsTabs, (item) => item.label), ["Bot Petugas"]);
 });
 
 test("kartu ringkasan siswa tidak tampil pada menu pengaturan", () => {
@@ -342,9 +342,9 @@ test("kontrol tabel guru memakai ID elemen yang tersedia", () => {
   assert.doesNotMatch(teacherScript, /\$\{prefix\}ResetFilters/);
 });
 
-test("jadwal guru memakai dropdown data master mata pelajaran dan kelas", () => {
-  assert.match(dashboardPage, /id:"mapel-guru",label:"Mata Pelajaran"/);
-  assert.match(dashboardPage, /id:"kelas-guru",label:"Kelas"/);
+test("jadwal petugas memakai dropdown data master aktivitas dan unit", () => {
+  assert.match(dashboardPage, /id:"mapel-guru",label:"Aktivitas"/);
+  assert.match(dashboardPage, /id:"kelas-guru",label:"Unit"/);
   assert.match(dashboardPage, /id="subjectsPanel"/);
   assert.match(dashboardPage, /id="classesPanel"/);
   assert.match(dashboardPage, /data-add-catalog="subjects"[^>]*>[^<]*<i[^>]*><\/i>Tambah Mata Pelajaran<\/button>/);
