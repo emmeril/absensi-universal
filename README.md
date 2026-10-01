@@ -4,12 +4,11 @@ Ruang Hadir adalah sistem absensi umum berbasis WhatsApp untuk organisasi, kanto
 
 ## Model penggunaan
 
-Ruang Hadir menyediakan dua alur yang dapat dipakai bersamaan:
+Ruang Hadir menyediakan alur kehadiran anggota yang dapat dipakai oleh beragam organisasi:
 
 - **Anggota** memakai jadwal masuk dan pulang harian. Anggota ditempatkan dalam unit dan dapat memiliki nomor kontak darurat.
-- **Petugas** memakai sesi terjadwal. Setiap sesi menghubungkan petugas, unit, aktivitas, jam, dan tanggal berlaku.
 
-Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu, kelompok, kelas, lokasi, atau tim. Aktivitas dapat berarti tugas, agenda, layanan, pelatihan, atau kegiatan lain.
+Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu, kelompok, kelas, lokasi, atau tim.
 
 ## Fitur
 
@@ -17,8 +16,8 @@ Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu,
 - Verifikasi selfie dengan foto referensi.
 - Validasi GPS terhadap titik lokasi kegiatan.
 - Izin dua tahap dengan selfie dan bukti pendukung.
-- Pengelolaan anggota, petugas, unit, aktivitas, jadwal, izin, dan pengguna.
-- Bot WhatsApp terpisah untuk anggota dan petugas.
+- Pengelolaan anggota, unit, jadwal, izin, dan pengguna.
+- Bot WhatsApp anggota untuk setiap unit.
 - Notifikasi kepada admin, pengelola unit, dan kontak darurat.
 - Laporan harian dan ekspor Excel.
 - Branding nama aplikasi dan logo.
@@ -29,10 +28,9 @@ Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu,
 | Peran | Fungsi |
 | --- | --- |
 | Administrator | Mengelola seluruh data, akun, konfigurasi, dan laporan. |
-| Operator | Mengelola petugas, aktivitas, sesi tugas, izin petugas, lokasi, dan Bot Petugas. |
 | Pengelola Unit | Mengelola anggota dan Bot Anggota pada unit yang menjadi tanggung jawabnya. |
 
-Nama role internal lama (`admin`, `tu`, dan `wali_kelas`) dipertahankan agar instalasi yang sudah berjalan tidak memerlukan migrasi data berisiko. Dashboard dan pesan pengguna menampilkan istilah universal di atas.
+Dashboard memakai role `admin` dan `wali_kelas`. Data role lama tetap disimpan agar pembaruan tidak menghapus data secara otomatis, tetapi role tersebut tidak dapat masuk ke dashboard.
 
 ## Perintah WhatsApp
 
@@ -48,20 +46,11 @@ Nama role internal lama (`admin`, `tu`, dan `wali_kelas`) dipertahankan agar ins
 
 Anggota harus mengirim perintah ke nomor Bot Anggota milik unitnya. Tautan masuk atau pulang berlaku selama dua menit. Tautan izin berlaku selama lima menit.
 
-### Bot Petugas
-
-Petugas mengirim `!masuk` untuk memperoleh tautan sesi atau `!jadwal` untuk melihat jadwal hari ini. Dalam satu tautan, petugas melakukan:
-
-1. Selfie kehadiran dan pemeriksaan GPS.
-2. Foto kegiatan serta catatan kegiatan.
-
-Jendela absensi dimulai 15 menit sebelum sesi dan berakhir saat sesi selesai. Jadwal berurutan untuk petugas dan unit yang sama dapat digabung sebagai satu sesi. Foto kegiatan merupakan bahan tinjauan, bukan verifikasi otomatis atas seluruh kegiatan.
-
 ## Persyaratan
 
 - Node.js 22.12 atau lebih baru.
 - npm.
-- Nomor WhatsApp untuk Bot Anggota dan, jika dipakai, Bot Petugas.
+- Nomor WhatsApp untuk Bot Anggota.
 - HTTPS untuk halaman kamera pada penggunaan di luar localhost.
 
 ## Instalasi
@@ -123,8 +112,7 @@ Buka dashboard di `http://localhost:3200`. Setelah masuk:
 2. Buat akun pengelola unit bila diperlukan.
 3. Tambahkan anggota dan foto referensinya.
 4. Hubungkan nomor pada **Pengaturan > Bot Anggota**.
-5. Untuk alur petugas, isi petugas, aktivitas, unit, dan jadwal tugas lalu hubungkan **Bot Petugas**.
-6. Atur titik lokasi kegiatan dengan perintah `!lokasi`.
+5. Atur titik lokasi kegiatan dengan perintah `!lokasi`.
 
 Untuk produksi dengan PM2:
 
@@ -136,7 +124,7 @@ pm2 save
 
 ## Kompatibilitas data lama
 
-Nama file, field JSON, dan endpoint lama seperti `siswa`, `kelas`, dan `/api/teachers` tetap dipertahankan sebagai format penyimpanan kompatibel. Pengguna tidak melihat istilah tersebut pada antarmuka atau pesan operasional. Data JSON lama tetap dapat diimpor saat startup, lalu perubahan berikutnya disimpan di SQLite.
+Nama file dan field JSON lama seperti `siswa` dan `kelas` tetap dipertahankan sebagai format penyimpanan kompatibel. Data lama fitur petugas tidak dihapus otomatis, tetapi fitur, halaman, endpoint, dan botnya tidak lagi dijalankan. Data JSON lain tetap dapat diimpor saat startup, lalu perubahan berikutnya disimpan di SQLite.
 
 Direktori `.baileys_auth`, `data`, `face_db`, `face_rec`, `attendance_photos`, `izin_bukti`, `brand`, dan `exports` berisi data privat atau sensitif dan tidak boleh dimasukkan ke Git.
 

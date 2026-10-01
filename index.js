@@ -36,7 +36,9 @@ const {
   withDatabaseTransaction,
 } = require("./models/database");
 const { BaileysManager } = require("./lib/baileys-manager");
-const { TEACHERS_PATH, TEACHER_RECORDS_PATH, EMPTY_TEACHERS, createTeacherAttendance } = require("./lib/teacher-attendance");
+const TEACHERS_PATH = "./teachers.json";
+const TEACHER_RECORDS_PATH = "./teacher_records.json";
+const EMPTY_TEACHERS = { number: "", teachers: {}, schedules: {}, holidays: [], subjects: [], classes: [] };
 const { qrToSvg } = require("./lib/qr-svg");
 const {
   validateLocationMessage,
@@ -733,85 +735,7 @@ function dashboardUserName(id, role) {
     if (wali?.namaWali) return wali.namaWali;
   }
 
-  return ({ admin: "Administrator", tu: "Operator", wali_kelas: "Pengelola Unit" })[role] || "Pengguna";
-}
-
-async function syncWaliKelasToTeachers() {
-  const roles = loadRoles();
-  const names = loadJSON(USER_NAMES_PATH, {});
-  const kelas = loadKelas();
-  let synced = 0;
-  await updateJSON([TEACHERS_PATH], (draft) => {
-    const teacherConfig = draft[TEACHERS_PATH];
-    teacherConfig.teachers ||= {};
-    for (const [id, role] of Object.entries(roles)) {
-      if (role !== "wali_kelas") continue;
-      const nomor = id.replace("@c.us", "");
-      if (teacherConfig.number === nomor) continue;
-      const name = names[id] || Object.values(kelas).find((data) => data.waliKelas === id)?.namaWali;
-      if (!name) continue;
-      const current = teacherConfig.teachers[nomor];
-      if (!current || current.name !== name) {
-        teacherConfig.teachers[nomor] = { ...(current || {}), name, active: current?.active !== false };
-        synced += 1;
-      }
-    }
-  });
-  return synced;
-}
-
-async function syncClassCatalogs() {
-  await updateJSON([KELAS_PATH, TEACHERS_PATH], (draft) => {
-    const studentClasses = draft[KELAS_PATH];
-    const teacherConfig = draft[TEACHERS_PATH];
-    const names = new Set([
-      ...Object.keys(studentClasses),
-      ...(teacherConfig.classes || []),
-      ...Object.values(teacherConfig.schedules || {}).map((schedule) => schedule.className),
-    ].filter(Boolean).map((name) => String(name).trim().toUpperCase()));
-    for (const name of names) studentClasses[name] ||= { siswa: {}, waliKelas: "", namaWali: "" };
-    teacherConfig.classes = [...names].sort((left, right) => left.localeCompare(right, "id", { numeric: true }));
-    for (const schedule of Object.values(teacherConfig.schedules || {})) schedule.className = String(schedule.className).trim().toUpperCase();
-  });
-}
-
-async function syncStudentClassCatalog(change) {
-  const name = String(change.name || "").trim().toUpperCase();
-  const originalName = String(change.originalName || "").trim().toUpperCase();
-  await updateJSON([KELAS_PATH], (draft) => {
-    const kelas = draft[KELAS_PATH];
-    if (change.type === "add") {
-      kelas[name] ||= { siswa: {}, waliKelas: "", namaWali: "" };
-      return;
-    }
-    if (change.type === "rename" && kelas[originalName] && originalName !== name) {
-      if (kelas[name]) throw new Error("Nama kelas sudah digunakan pada data siswa.");
-      kelas[name] = kelas[originalName];
-      delete kelas[originalName];
-      return;
-    }
-    if (change.type === "delete" && kelas[name]) {
-      if (Object.keys(kelas[name].siswa || {}).length) throw new Error("Pindahkan siswa sebelum menghapus kelas.");
-      delete kelas[name];
-    }
-  });
-}
-
-function ensureStudentClassCanRename(originalName, name) {
-  const kelas = loadKelas();
-  const original = String(originalName || "").trim().toUpperCase();
-  const next = String(name || "").trim().toUpperCase();
-  if (original !== next && kelas[original] && kelas[next]) {
-    throw new Error("Nama kelas sudah digunakan pada data siswa.");
-  }
-}
-
-function ensureStudentClassCanDelete(name) {
-  const kelas = loadKelas();
-  const current = kelas[String(name || "").trim().toUpperCase()];
-  if (current && Object.keys(current.siswa || {}).length) {
-    throw new Error("Pindahkan siswa sebelum menghapus kelas.");
-  }
+  return ({ admin: "Administrator", wali_kelas: "Pengelola Unit" })[role] || "Pengguna";
 }
 
 function teksBantuan(role, terdaftar) {
@@ -836,18 +760,6 @@ function teksBantuan(role, terdaftar) {
       "• *!bantuan* - Menampilkan daftar perintah yang tersedia untuk role kamu.",
       "",
       `Data siswa dan foto referensi kelas dikelola melalui dashboard: ${publicBaseUrl()}`
-    );
-    return lines.join("\n");
-  }
-
-  if (role === "tu") {
-    lines.push(
-      "",
-      "Akses: Tata Usaha",
-      "• *!lokasi* - Mengatur titik lokasi sekolah melalui Bot Guru. Setelah perintah ini, bagikan lokasi sekolah melalui fitur Lokasi WhatsApp.",
-      "• *!bantuan* - Menampilkan daftar perintah yang tersedia untuk role kamu.",
-      "",
-      `Absensi guru dan Bot Guru dikelola melalui dashboard: ${publicBaseUrl()}`
     );
     return lines.join("\n");
   }
@@ -1223,13 +1135,10 @@ whatsapp.on("message", safeAsyncListener(async ({
     return replyCommand("✅ Lokasi sekolah disimpan.");
   }
   if (body === "!lokasi" || body === "!setlokasi") {
-    const tuCanSetLocation = role === "tu" && botKey === `tu:${teacherAttendance.config().number}`;
-    if (role !== "admin" && !tuCanSetLocation) return replyCommand("❌ Hanya admin atau Tata Usaha melalui Bot Guru.");
+    if (role !== "admin") return replyCommand("❌ Hanya administrator yang dapat mengatur lokasi.");
     pendingLokasi.set(pendingLocationKey, Date.now() + LOCATION_REQUEST_TTL_MS);
     return replyCommand("📍 Bagikan lokasi sekolah sekarang melalui fitur Lokasi WhatsApp.");
   }
-
-  if (await teacherAttendance.command({ botKey, sender, body, reply: replyCommand })) return;
 
   const kelasSiswa = findKelasSiswa(loadKelas(), sender);
   const beradaDiBotWali =
@@ -1238,7 +1147,7 @@ whatsapp.on("message", safeAsyncListener(async ({
     classNames.includes(kelasSiswa.namaKelas);
 
   if (body === "!bantuan") {
-    if (["admin", "tu", "wali_kelas"].includes(role)) {
+    if (["admin", "wali_kelas"].includes(role)) {
       return replyCommand(teksBantuan(role, beradaDiBotWali));
     }
     return replyCommand(
@@ -1358,7 +1267,7 @@ function webUser(req) {
   const currentAccount = loadDashboardAccounts()[session.username];
   if (
     currentRole !== session.role ||
-    !["admin", "tu", "wali_kelas"].includes(currentRole) ||
+    !["admin", "wali_kelas"].includes(currentRole) ||
     currentAccount?.userId !== session.id
   ) {
     webSessions.delete(token);
@@ -1381,23 +1290,17 @@ function requireWebAdmin(req, res, next) {
   next();
 }
 
-function requireWebTeacherManager(req, res, next) {
-  if (!["admin", "tu"].includes(req.webUser?.role)) {
-    return res.status(403).json({ error: "Fitur ini hanya tersedia untuk admin atau Tata Usaha." });
-  }
-  next();
-}
-
 function requireWhatsappBotAccess(req, res, next) {
-  const bot = whatsapp.statuses().find((status) => status.key === req.params.key);
+  const bot = whatsapp.statuses().find(
+    (status) => status.key === req.params.key && status.role !== "tu"
+  );
   if (!bot) {
     return res.status(404).json({ error: "Sesi WhatsApp tidak ditemukan." });
   }
   const ownsBot =
     req.webUser?.role === "wali_kelas" &&
     bot.expectedNumber === req.webUser.nomor;
-  const managesTeacherBot = req.webUser?.role === "tu" && bot.role === "tu";
-  if (req.webUser?.role !== "admin" && !ownsBot && !managesTeacherBot) {
+  if (req.webUser?.role !== "admin" && !ownsBot) {
     return res.status(403).json({
       error: "Wali kelas hanya dapat mengelola sesi WhatsApp miliknya.",
     });
@@ -1433,38 +1336,6 @@ function removeUnusedWaliRole(userId, kelas, roles) {
   );
   if (!masihMenjadiWali) delete roles[userId];
 }
-
-const teacherAttendance = createTeacherAttendance({
-  loadJSON, updateJSON, parseImageDataUrl, validateImagePayload, validateImageBuffer,
-  verifyFace: (userId, buffer) => antreVerifikasiWajah(userId, buffer).promise,
-  writePrivateFile, requireWebAuth, requireWebAdmin, requireWebTeacherManager, upload, publicBaseUrl,
-  getClasses: loadKelas, getStudents: () => loadJSON(KONTAK_PATH),
-  syncStudentClassCatalog, ensureStudentClassCanRename, ensureStudentClassCanDelete,
-  syncBots: () => whatsapp.sync(loadKelas()),
-  notifyTeacherAttendance: async (record) => {
-    const botNumber = teacherAttendance.config().number;
-    if (!botNumber) return;
-    const recipients = Object.entries(loadRoles())
-      .filter(([, role]) => ["admin", "tu"].includes(role))
-      .map(([id]) => id);
-    if (!recipients.length) return;
-    const time = new Date(record.arrival).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta" });
-    const status = record.lateMinutes ? `Terlambat ${record.lateMinutes} menit` : "Tepat waktu";
-    await enqueueNotifications(recipients.map((recipientId) => textNotification(
-      `tu:${botNumber}`,
-      recipientId,
-      `*${record.name}* telah absen mengajar.\nJadwal: ${record.schedule.start}–${record.schedule.end} · ${record.schedule.className} · ${record.schedule.subject}\nJam: ${time}\nStatus: ${status}`,
-      { priority: 10, dedupeKey: `teacher-attendance:${record.key}:${recipientId}` }
-    )));
-    notificationOutboxProcessor?.wake();
-  },
-});
-whatsapp.getTuConfig = () => {
-  const config = teacherAttendance.config();
-  return { number: config.number, teacherNumbers: Object.keys(config.teachers) };
-};
-teacherAttendance.registerCamera(app, cameraRequestLimiter);
-teacherAttendance.registerAdmin(app);
 
 app.get("/api/permission-camera/:token", (req, res) => {
   const session = getPermissionSession(req.params.token);
@@ -1730,7 +1601,7 @@ app.post("/api/auth/login", async (req, res) => {
   );
   const id = account?.userId;
   const role = id ? loadRoles()[id] : null;
-  if (!account || !passwordValid || !["admin", "tu", "wali_kelas"].includes(role)) {
+  if (!account || !passwordValid || !["admin", "wali_kelas"].includes(role)) {
     return res.status(401).json({ error: "Username atau password salah." });
   }
 
@@ -1830,7 +1701,7 @@ async function dashboardData(user) {
     };
   });
   const whatsappBots = whatsapp.statuses().filter(
-    (bot) => user.role === "admin" || (user.role === "tu" && bot.role === "tu") || bot.expectedNumber === user.nomor
+    (bot) => bot.role !== "tu" && (user.role === "admin" || bot.expectedNumber === user.nomor)
   );
 
   return {
@@ -1850,7 +1721,7 @@ async function dashboardData(user) {
       jumlahSiswa: Object.keys(data.siswa || {}).length,
     })),
     admins: user.role === "admin" ? Object.entries(roles)
-      .filter(([, role]) => ["admin", "tu", "wali_kelas"].includes(role))
+      .filter(([, role]) => ["admin", "wali_kelas"].includes(role))
       .map(([id, role]) => ({
         nomor: id.replace("@c.us", ""),
         nama: dashboardUserName(id, role),
@@ -1896,7 +1767,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
       error: "Username harus 3-32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung.",
     });
   }
-  if (!["admin", "tu", "wali_kelas"].includes(role)) {
+  if (!["admin", "wali_kelas"].includes(role)) {
     return res.status(400).json({ error: "Role pengguna tidak valid." });
   }
 
@@ -1912,14 +1783,14 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
     ? await hashPassword(password)
     : currentAccount.passwordHash;
   try {
-    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, KONTAK_PATH, TEACHERS_PATH], (draft) => {
+    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, KONTAK_PATH], (draft) => {
       const currentRole = draft[ROLE_PATH][id];
       if (!editing && currentRole) {
         const error = new Error("Nomor tersebut sudah terdaftar sebagai pengguna.");
         error.code = "ALREADY_EXISTS";
         throw error;
       }
-      if (editing && !["admin", "tu", "wali_kelas"].includes(currentRole)) {
+      if (editing && !["admin", "wali_kelas"].includes(currentRole)) {
         const error = new Error("Pengguna yang diedit tidak ditemukan.");
         error.code = "NOT_FOUND";
         throw error;
@@ -1941,10 +1812,9 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
           error.code = "CLASS_ASSIGNED";
           throw error;
         }
-        const teacherConfig = draft[TEACHERS_PATH];
-        if (teacherConfig.number === nomor || draft[KONTAK_PATH][id]) {
-          const error = new Error("Nomor wali kelas tidak boleh sama dengan nomor Bot Guru atau siswa.");
-          error.code = "TEACHER_NUMBER_UNAVAILABLE";
+        if (draft[KONTAK_PATH][id]) {
+          const error = new Error("Nomor pengelola unit tidak boleh sama dengan nomor anggota.");
+          error.code = "NUMBER_UNAVAILABLE";
           throw error;
         }
         for (const data of Object.values(draft[KELAS_PATH])) {
@@ -1952,8 +1822,6 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
         }
         assignedClass.waliKelas = id;
         assignedClass.namaWali = nama;
-        teacherConfig.teachers ||= {};
-        teacherConfig.teachers[nomor] = { ...teacherConfig.teachers[nomor], name: nama, active: true };
       }
       draft[ROLE_PATH][id] = role;
       draft[USER_NAMES_PATH][id] = nama;
@@ -1967,7 +1835,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
-    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "TEACHER_NUMBER_UNAVAILABLE"].includes(error.code)) return res.status(400).json({ error: error.message });
+    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE"].includes(error.code)) return res.status(400).json({ error: error.message });
     throw error;
   }
   if (id === req.webUser.id) req.webUser.username = username;
@@ -1988,7 +1856,7 @@ app.delete("/api/admins/:number", requireWebAdmin, async (req, res) => {
 
   let found = false;
   await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH], (draft) => {
-    if (["admin", "tu", "wali_kelas"].includes(draft[ROLE_PATH][id])) {
+    if (["admin", "wali_kelas"].includes(draft[ROLE_PATH][id])) {
       found = true;
       for (const data of Object.values(draft[KELAS_PATH])) if (data.waliKelas === id) { data.waliKelas = ""; data.namaWali = ""; }
       delete draft[ROLE_PATH][id]; delete draft[USER_NAMES_PATH][id]; removeDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], id);
@@ -2004,9 +1872,8 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
   const originalNama = String(req.body.originalNama || "").trim().toUpperCase();
   if (!nama) return res.status(400).json({ error: "Nama kelas belum valid." });
   try {
-    await updateJSON([KELAS_PATH, TEACHERS_PATH], (draft) => {
+    await updateJSON([KELAS_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
-      const teacherConfig = draft[TEACHERS_PATH];
       if (originalNama) {
         if (!kelas[originalNama]) {
           const error = new Error("Kelas yang diedit tidak ditemukan.");
@@ -2029,15 +1896,6 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
       }
 
       kelas[nama] ||= { siswa: {}, waliKelas: "", namaWali: "" };
-      const teacherClasses = new Set((teacherConfig.classes || []).map((name) => String(name).trim().toUpperCase()));
-      if (originalNama && originalNama !== nama) {
-        teacherClasses.delete(originalNama);
-        for (const schedule of Object.values(teacherConfig.schedules || {})) {
-          if (String(schedule.className).trim().toUpperCase() === originalNama) schedule.className = nama;
-        }
-      }
-      teacherClasses.add(nama);
-      teacherConfig.classes = [...teacherClasses].sort((left, right) => left.localeCompare(right, "id", { numeric: true }));
     });
   } catch (error) {
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
@@ -2051,9 +1909,8 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
 app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
   const nama = String(req.params.name || "").toUpperCase();
   try {
-    await updateJSON([KELAS_PATH, TEACHERS_PATH], (draft) => {
+    await updateJSON([KELAS_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
-      const teacherConfig = draft[TEACHERS_PATH];
       if (!kelas[nama]) {
         const error = new Error("Kelas tidak ditemukan.");
         error.code = "NOT_FOUND";
@@ -2064,18 +1921,11 @@ app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
         error.code = "NOT_EMPTY";
         throw error;
       }
-      if (Object.values(teacherConfig.schedules || {}).some((schedule) => String(schedule.className).trim().toUpperCase() === nama)) {
-        const error = new Error("Kelas masih digunakan pada jadwal mengajar.");
-        error.code = "SCHEDULED";
-        throw error;
-      }
       delete kelas[nama];
-      teacherConfig.classes = (teacherConfig.classes || []).filter((className) => String(className).trim().toUpperCase() !== nama);
     });
   } catch (error) {
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
     if (error.code === "NOT_EMPTY") return res.status(400).json({ error: error.message });
-    if (error.code === "SCHEDULED") return res.status(400).json({ error: error.message });
     throw error;
   }
   void whatsapp.sync(loadKelas()).catch((error) => {
@@ -2086,9 +1936,6 @@ app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
 
 app.post("/api/students", requireWebAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.body.nomor);
-  if (teacherAttendance.config().teachers[nomor]) {
-    return res.status(400).json({ error: "Nomor sudah terdaftar sebagai guru." });
-  }
   const originalNomor = normalizeNomor(req.body.originalNomor);
   const nama = toTitleCase(String(req.body.nama || "").trim());
   const namaKelas = String(req.body.kelas || "").trim().toUpperCase();
@@ -2113,7 +1960,6 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
     await updateJSONAtomic(
       [KONTAK_PATH, KELAS_PATH, IZIN_PATH],
       (draft) => {
-        if (teacherAttendance.config().teachers[nomor]) throw new Error("Nomor sudah terdaftar sebagai guru.");
         const kontak = draft[KONTAK_PATH];
         const kelas = draft[KELAS_PATH];
         if (namaKelas && !kelas[namaKelas]) {
@@ -2629,9 +2475,6 @@ async function startBot() {
   try {
     jsonState.replace(await initJsonStore(JSON_STORES));
     console.log(`Database Sequelize siap: ${DB_PATH}`);
-    const syncedWaliTeachers = await syncWaliKelasToTeachers();
-    if (syncedWaliTeachers) console.log(`[Sinkronisasi Guru] ${syncedWaliTeachers} wali kelas ditambahkan atau diperbarui.`);
-    await syncClassCatalogs();
     if (!Object.keys(loadDashboardAccounts()).length) {
       console.warn(
         "⚠️ Belum ada akun dashboard. Atur INITIAL_ADMIN_USERNAME dan INITIAL_ADMIN_PASSWORD, lalu gunakan database baru atau buat akun melalui data akun."

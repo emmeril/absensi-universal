@@ -3,37 +3,14 @@
 const PHRASES = [
   ["Sistem Absensi Sekolah", "Sistem Absensi Universal"],
   ["sistem absensi sekolah", "sistem absensi universal"],
-  ["Laporan Kehadiran Guru", "Laporan Kehadiran Petugas"],
-  ["laporan kehadiran guru", "laporan kehadiran petugas"],
   ["Pengajuan Izin Siswa", "Pengajuan Izin Anggota"],
   ["pengajuan izin siswa", "pengajuan izin anggota"],
-  ["Data Guru", "Data Petugas"],
-  ["data guru", "data petugas"],
-  ["Mata Pelajaran", "Aktivitas"],
-  ["mata pelajaran", "aktivitas"],
-  ["Jam Mengajar", "Jadwal Tugas"],
-  ["jam mengajar", "jadwal tugas"],
-  ["jadwal mengajar", "jadwal tugas"],
-  ["Jadwal Mengajar", "Jadwal Tugas"],
-  ["Bot Guru", "Bot Petugas"],
-  ["bot guru", "bot petugas"],
   ["Bot Siswa", "Bot Anggota"],
   ["bot siswa", "bot anggota"],
   ["Wali Kelas", "Pengelola Unit"],
   ["wali kelas", "pengelola unit"],
-  ["Tata Usaha", "Operator"],
-  ["tata usaha", "operator"],
   ["Orang Tua", "Kontak Darurat"],
   ["orang tua", "kontak darurat"],
-  ["foto kegiatan belajar", "foto kegiatan"],
-  ["materi yang diajarkan", "catatan kegiatan"],
-  ["materi diajarkan", "catatan kegiatan"],
-  ["bukti mengajar", "bukti kegiatan"],
-  ["kegiatan belajar", "kegiatan"],
-  ["sesi mengajar", "sesi tugas"],
-  ["Sesi mengajar", "Sesi tugas"],
-  ["jadwal pelajaran", "jadwal aktivitas"],
-  ["jam pelajaran", "sesi aktivitas"],
   ["admin sekolah", "admin organisasi"],
   ["Lokasi sekolah", "Lokasi kegiatan"],
   ["lokasi sekolah", "lokasi kegiatan"],
@@ -46,19 +23,11 @@ const PHRASES = [
 const EXACT_LABELS = new Map([
   ["Siswa", "Anggota"],
   ["siswa", "anggota"],
-  ["Guru", "Petugas"],
-  ["guru", "petugas"],
   ["Kelas", "Unit"],
   ["kelas", "unit"],
-  ["Pelajaran", "Aktivitas"],
-  ["pelajaran", "aktivitas"],
-  ["TU", "Operator"],
   ["Absen Siswa", "Absen Anggota"],
-  ["Absen Guru", "Absen Petugas"],
   ["Tambah Siswa", "Tambah Anggota"],
   ["Edit Siswa", "Edit Anggota"],
-  ["Tambah Guru", "Tambah Petugas"],
-  ["Edit Guru", "Edit Petugas"],
   ["Tambah Kelas", "Tambah Unit"],
   ["Edit Kelas", "Edit Unit"],
 ]);
@@ -73,14 +42,8 @@ function toUniversalTerms(value) {
     .replace(/\bsiswa\b/g, "anggota")
     .replace(/\bMurid\b/g, "Anggota")
     .replace(/\bmurid\b/g, "anggota")
-    .replace(/\bGuru\b/g, "Petugas")
-    .replace(/\bguru\b/g, "petugas")
     .replace(/\bKelas\b/g, "Unit")
-    .replace(/\bkelas\b/g, "unit")
-    .replace(/\bPelajaran\b/g, "Aktivitas")
-    .replace(/\bpelajaran\b/g, "aktivitas")
-    .replace(/\bmengajar\b/g, "bertugas")
-    .replace(/\bdiajarkan\b/g, "dicatat");
+    .replace(/\bkelas\b/g, "unit");
 }
 
 function shouldSkipElement(element) {

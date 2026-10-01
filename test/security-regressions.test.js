@@ -60,7 +60,10 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   const app = express();
   const ids = { a: "62111@c.us", b: "62222@c.us", deleted: "62333@c.us" };
   app.use((req, res, next) => {
-    req.webUser = { id: req.query.user, role: req.query.user === "admin" ? "admin" : req.query.user === "tu" ? "tu" : "wali_kelas" };
+    req.webUser = {
+      id: req.query.user,
+      role: req.query.user === "admin" ? "admin" : req.query.user === "teacher" ? "wali_kelas" : "legacy",
+    };
     next();
   });
   const context = {
@@ -124,11 +127,11 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   assert.equal((await fetch(`${url}?user=tu&startDate=2026-09-08&endDate=2026-09-09`)).status, 403);
 });
 
-test("QR dan reset WhatsApp dibatasi sesuai kepemilikan bot wali", () => {
+test("QR dan reset WhatsApp hanya tersedia untuk bot anggota yang berwenang", () => {
   const bots = [
     { key: "wali:62111", expectedNumber: "62111", qr: "own" },
     { key: "wali:62222", expectedNumber: "62222", qr: "other" },
-    { key: "tu:62333", expectedNumber: "62333", role: "tu", qr: "teacher" },
+    { key: "tu:62333", expectedNumber: "62333", role: "tu", qr: "legacy" },
   ];
   const context = { whatsapp: { statuses: () => bots } };
   vm.runInNewContext(
@@ -164,11 +167,13 @@ test("QR dan reset WhatsApp dibatasi sesuai kepemilikan bot wali", () => {
   }, response(), () => { nextCalls += 1; });
   assert.equal(nextCalls, 2);
 
+  res = response();
   context.requireWhatsappBotAccess({
     params: { key: "tu:62333" },
-    webUser: { role: "tu", nomor: "62444" },
-  }, response(), () => { nextCalls += 1; });
-  assert.equal(nextCalls, 3);
+    webUser: { role: "admin", nomor: "62999" },
+  }, res, () => { nextCalls += 1; });
+  assert.equal(res.statusCode, 404);
+  assert.equal(nextCalls, 2);
 
   res = response();
   context.requireWhatsappBotAccess({
@@ -184,7 +189,7 @@ test("QR dan reset WhatsApp dibatasi sesuai kepemilikan bot wali", () => {
     source,
     /app\.post\("\/api\/whatsapp\/:key\/reset", requireWhatsappBotAccess/
   );
-  assert.match(source, /user\.role === "admin" \|\| \(user\.role === "tu" && bot\.role === "tu"\) \|\| bot\.expectedNumber === user\.nomor/);
+  assert.match(source, /status\.role !== "tu"/);
   assert.match(source, /hasQr: Boolean\(qr\)/);
   assert.doesNotMatch(source, /QR_ACCESS_TOKEN|requireQrAccess|QR_RESET_TOKEN/);
 });
