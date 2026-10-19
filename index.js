@@ -81,6 +81,12 @@ const {
   validateAttendance,
   validatePermission,
 } = require("./lib/attendance-rules");
+const {
+  VALID_NOTIFICATION_MODES,
+  normalizeNotificationPreference,
+  notificationPolicyError,
+  receivesUnit,
+} = require("./lib/admin-notifications");
 const { toUniversalTerms } = require("./public/universal-copy");
 const app = express();
 const PORT = Number(process.env.PORT) || 3200;
@@ -185,6 +191,7 @@ const IZIN_PATH = "./izin.json";
 const KELAS_PATH = "./kelas.json";
 const USER_NAMES_PATH = "./user_names.json";
 const DASHBOARD_ACCOUNTS_PATH = "./dashboard_accounts.json";
+const ADMIN_NOTIFICATIONS_PATH = "./admin_notifications.json";
 const BRAND_PATH = "./brand.json";
 const BRAND_LOGO_DIR = "./brand";
 const DEFAULT_BRAND = {
@@ -240,6 +247,7 @@ const JSON_STORES = {
     path: DASHBOARD_ACCOUNTS_PATH,
     fallback: INITIAL_DASHBOARD_ACCOUNTS,
   },
+  [ADMIN_NOTIFICATIONS_PATH]: { path: ADMIN_NOTIFICATIONS_PATH, fallback: {} },
   [BRAND_PATH]: { path: BRAND_PATH, fallback: DEFAULT_BRAND },
 };
 
@@ -698,6 +706,56 @@ function loadDashboardAccounts() {
   return loadJSON(DASHBOARD_ACCOUNTS_PATH, {});
 }
 
+function loadAdminNotificationPreferences() {
+  return loadJSON(ADMIN_NOTIFICATIONS_PATH, {});
+}
+
+function adminIds(roles) {
+  return Object.entries(roles)
+    .filter(([, role]) => role === "admin")
+    .map(([id]) => id);
+}
+
+function adminNotificationPreference(id, preferences, kelas) {
+  return normalizeNotificationPreference(
+    preferences[id],
+    Object.keys(kelas)
+  );
+}
+
+function requestedAdminNotificationPreference(body, kelas) {
+  const mode = String(body.notificationMode || "all");
+  if (!VALID_NOTIFICATION_MODES.has(mode)) {
+    const error = new Error("Pilihan notifikasi Administrator tidak valid.");
+    error.code = "NOTIFICATION_PREFERENCE";
+    throw error;
+  }
+
+  if (mode !== "selected") return { mode, units: [] };
+  const requestedUnits = Array.isArray(body.notificationUnits)
+    ? body.notificationUnits.map((unit) => String(unit || "").trim().toUpperCase())
+    : [];
+  const units = [...new Set(requestedUnits)].filter(Boolean);
+  if (!units.length || units.some((unit) => !kelas[unit])) {
+    const error = new Error("Pilih minimal satu Unit yang tersedia untuk notifikasi.");
+    error.code = "NOTIFICATION_PREFERENCE";
+    throw error;
+  }
+  return { mode, units };
+}
+
+function assertAdminNotificationPolicy(roles, preferences, kelas) {
+  const message = notificationPolicyError({
+    adminIds: adminIds(roles),
+    preferences,
+    unitNames: Object.keys(kelas),
+  });
+  if (!message) return;
+  const error = new Error(message);
+  error.code = "NOTIFICATION_POLICY";
+  throw error;
+}
+
 function dashboardAccountForUser(accounts, userId) {
   for (const [username, account] of Object.entries(accounts || {})) {
     if (account?.userId === userId) return { username, ...account };
@@ -878,10 +936,14 @@ function getAttendanceStatus(waktu, jamResmi, tipe) {
 }
 
 function getStudentNotificationRecipients(studentId, kelasSiswa) {
+  const roles = loadRoles();
+  const preferences = loadAdminNotificationPreferences();
+  const kelas = loadKelas();
+  const unitName = kelasSiswa?.namaKelas || "";
   const recipients = new Set(
-    Object.entries(loadRoles())
-      .filter(([, role]) => role === "admin")
-      .map(([id]) => id)
+    adminIds(roles).filter((id) =>
+      receivesUnit(adminNotificationPreference(id, preferences, kelas), unitName)
+    )
   );
   if (kelasSiswa?.waliKelas) recipients.add(kelasSiswa.waliKelas);
   if (kelasSiswa?.siswa[studentId]?.orangTua) {
@@ -1667,6 +1729,7 @@ async function dashboardData(user) {
     user.role === "admin" ? semuaKelas : kelasUntukWali(semuaKelas, user.id);
   const roles = loadRoles();
   const accounts = loadDashboardAccounts();
+  const adminNotificationPreferences = loadAdminNotificationPreferences();
   const jam = loadJSON(JAM_PATH, {
     masuk: "07:00:00",
     pulang: "14:00:00",
@@ -1722,13 +1785,20 @@ async function dashboardData(user) {
     })),
     admins: user.role === "admin" ? Object.entries(roles)
       .filter(([, role]) => ["admin", "wali_kelas"].includes(role))
-      .map(([id, role]) => ({
-        nomor: id.replace("@c.us", ""),
-        nama: dashboardUserName(id, role),
-        username: dashboardAccountForUser(accounts, id)?.username || "",
-        role,
-        className: Object.entries(kelas).find(([, data]) => data.waliKelas === id)?.[0] || "",
-      })) : [],
+      .map(([id, role]) => {
+        const notificationPreference = role === "admin"
+          ? adminNotificationPreference(id, adminNotificationPreferences, semuaKelas)
+          : { mode: "selected", units: [] };
+        return {
+          nomor: id.replace("@c.us", ""),
+          nama: dashboardUserName(id, role),
+          username: dashboardAccountForUser(accounts, id)?.username || "",
+          role,
+          className: Object.entries(kelas).find(([, data]) => data.waliKelas === id)?.[0] || "",
+          notificationMode: notificationPreference.mode,
+          notificationUnits: notificationPreference.units,
+        };
+      }) : [],
     currentUser: {
       nomor: user.nomor,
       username: user.username,
@@ -1783,7 +1853,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
     ? await hashPassword(password)
     : currentAccount.passwordHash;
   try {
-    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, KONTAK_PATH], (draft) => {
+    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, KONTAK_PATH, ADMIN_NOTIFICATIONS_PATH], (draft) => {
       const currentRole = draft[ROLE_PATH][id];
       if (!editing && currentRole) {
         const error = new Error("Nomor tersebut sudah terdaftar sebagai pengguna.");
@@ -1825,6 +1895,19 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
       }
       draft[ROLE_PATH][id] = role;
       draft[USER_NAMES_PATH][id] = nama;
+      if (role === "admin") {
+        draft[ADMIN_NOTIFICATIONS_PATH][id] = requestedAdminNotificationPreference(
+          req.body,
+          draft[KELAS_PATH]
+        );
+      } else {
+        delete draft[ADMIN_NOTIFICATIONS_PATH][id];
+      }
+      assertAdminNotificationPolicy(
+        draft[ROLE_PATH],
+        draft[ADMIN_NOTIFICATIONS_PATH],
+        draft[KELAS_PATH]
+      );
       setDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], {
         username,
         userId: id,
@@ -1835,7 +1918,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
-    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE"].includes(error.code)) return res.status(400).json({ error: error.message });
+    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE", "NOTIFICATION_PREFERENCE", "NOTIFICATION_POLICY"].includes(error.code)) return res.status(400).json({ error: error.message });
     throw error;
   }
   if (id === req.webUser.id) req.webUser.username = username;
@@ -1855,13 +1938,26 @@ app.delete("/api/admins/:number", requireWebAdmin, async (req, res) => {
   }
 
   let found = false;
-  await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH], (draft) => {
-    if (["admin", "wali_kelas"].includes(draft[ROLE_PATH][id])) {
-      found = true;
-      for (const data of Object.values(draft[KELAS_PATH])) if (data.waliKelas === id) { data.waliKelas = ""; data.namaWali = ""; }
-      delete draft[ROLE_PATH][id]; delete draft[USER_NAMES_PATH][id]; removeDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], id);
-    }
-  });
+  try {
+    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, ADMIN_NOTIFICATIONS_PATH], (draft) => {
+      if (["admin", "wali_kelas"].includes(draft[ROLE_PATH][id])) {
+        found = true;
+        for (const data of Object.values(draft[KELAS_PATH])) if (data.waliKelas === id) { data.waliKelas = ""; data.namaWali = ""; }
+        delete draft[ROLE_PATH][id];
+        delete draft[USER_NAMES_PATH][id];
+        delete draft[ADMIN_NOTIFICATIONS_PATH][id];
+        removeDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], id);
+        assertAdminNotificationPolicy(
+          draft[ROLE_PATH],
+          draft[ADMIN_NOTIFICATIONS_PATH],
+          draft[KELAS_PATH]
+        );
+      }
+    });
+  } catch (error) {
+    if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
+    throw error;
+  }
   if (!found) return res.status(404).json({ error: "Pengguna tidak ditemukan." });
   void whatsapp.sync(loadKelas()).catch((error) => console.error("[Baileys] Gagal menyelaraskan bot wali:", error.message));
   res.json({ ok: true, nomor });
@@ -1872,7 +1968,7 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
   const originalNama = String(req.body.originalNama || "").trim().toUpperCase();
   if (!nama) return res.status(400).json({ error: "Nama unit belum valid." });
   try {
-    await updateJSON([KELAS_PATH], (draft) => {
+    await updateJSON([KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ROLE_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
       if (originalNama) {
         if (!kelas[originalNama]) {
@@ -1888,6 +1984,12 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
         if (originalNama !== nama) {
           kelas[nama] = kelas[originalNama];
           delete kelas[originalNama];
+          for (const preference of Object.values(draft[ADMIN_NOTIFICATIONS_PATH])) {
+            if (preference?.mode !== "selected" || !Array.isArray(preference.units)) continue;
+            preference.units = [...new Set(preference.units.map((unit) =>
+              unit === originalNama ? nama : unit
+            ))];
+          }
         }
       } else if (kelas[nama]) {
         const error = new Error("Unit tersebut sudah tersedia.");
@@ -1896,11 +1998,30 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
       }
 
       kelas[nama] ||= { siswa: {}, waliKelas: "", namaWali: "" };
+      if (!originalNama) {
+        const actorPreference = adminNotificationPreference(
+          req.webUser.id,
+          draft[ADMIN_NOTIFICATIONS_PATH],
+          kelas
+        );
+        if (!receivesUnit(actorPreference, nama)) {
+          draft[ADMIN_NOTIFICATIONS_PATH][req.webUser.id] = {
+            mode: "selected",
+            units: [...new Set([...actorPreference.units, nama])],
+          };
+        }
+      }
+      assertAdminNotificationPolicy(
+        draft[ROLE_PATH],
+        draft[ADMIN_NOTIFICATIONS_PATH],
+        kelas
+      );
     });
   } catch (error) {
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
+    if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
     throw error;
   }
   res.json({ ok: true });
@@ -1909,7 +2030,7 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
 app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
   const nama = String(req.params.name || "").toUpperCase();
   try {
-    await updateJSON([KELAS_PATH], (draft) => {
+    await updateJSON([KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ROLE_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
       if (!kelas[nama]) {
         const error = new Error("Unit tidak ditemukan.");
@@ -1922,10 +2043,25 @@ app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
         throw error;
       }
       delete kelas[nama];
+      const totalAdmins = adminIds(draft[ROLE_PATH]).length;
+      for (const [id, rawPreference] of Object.entries(draft[ADMIN_NOTIFICATIONS_PATH])) {
+        const preference = normalizeNotificationPreference(rawPreference, [nama, ...Object.keys(kelas)]);
+        if (preference.mode !== "selected") continue;
+        const units = preference.units.filter((unit) => unit !== nama);
+        draft[ADMIN_NOTIFICATIONS_PATH][id] = units.length
+          ? { mode: "selected", units }
+          : { mode: totalAdmins > 1 ? "none" : "all", units: [] };
+      }
+      assertAdminNotificationPolicy(
+        draft[ROLE_PATH],
+        draft[ADMIN_NOTIFICATIONS_PATH],
+        kelas
+      );
     });
   } catch (error) {
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
     if (error.code === "NOT_EMPTY") return res.status(400).json({ error: error.message });
+    if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
     throw error;
   }
   void whatsapp.sync(loadKelas()).catch((error) => {
@@ -2261,8 +2397,7 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
           `📅 Tanggal: ${tanggal}\n` +
           `📌 Alasan: ${alasan}`;
         const botKey = `wali:${normalizeNomor(kelasSiswa.waliKelas)}`;
-        return [kelasSiswa.siswa[siswaId].orangTua, kelasSiswa.waliKelas]
-          .filter(Boolean)
+        return [...getStudentNotificationRecipients(siswaId, kelasSiswa)]
           .map((id) => textNotification(botKey, id, pesan, {
             dedupeKey: `permission-admin:${tanggal}:${siswaId}:${id}`,
           }));

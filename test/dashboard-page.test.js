@@ -54,6 +54,17 @@ test("unit kosong dapat dipilih saat menambah pengelola unit", () => {
   );
 });
 
+test("Administrator dapat mengatur cakupan notifikasi per Unit", () => {
+  assert.match(dashboardPage, /Notifikasi Absensi/);
+  assert.match(dashboardPage, /value="all"/);
+  assert.match(dashboardPage, /value="selected"/);
+  assert.match(dashboardPage, /value="none"/);
+  assert.match(dashboardPage, /:disabled="!canDisableAdminNotifications"/);
+  assert.match(dashboardPage, /x-model="adminForm\.notificationUnits"/);
+  assert.match(server, /ADMIN_NOTIFICATIONS_PATH/);
+  assert.match(server, /assertAdminNotificationPolicy/);
+});
+
 test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /label:"Absen Anggota"/);
   assert.doesNotMatch(dashboardPage, /teacherMenuOpen/);
