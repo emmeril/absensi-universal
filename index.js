@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 process.env.TZ = process.env.TZ || "Asia/Jakarta";
 process.umask(0o077);
 
@@ -88,13 +88,16 @@ const {
   receivesUnit,
 } = require("./lib/admin-notifications");
 const { toUniversalTerms } = require("./public/universal-copy");
+const { unitBotKey } = require("./lib/unit-bot");
 const app = express();
 const PORT = Number(process.env.PORT) || 3200;
+const HOST = String(process.env.HOST || "127.0.0.1");
 const configuredPublicBaseUrl = String(process.env.PUBLIC_BASE_URL || "");
 const publicBaseUsesHttps = /^https:\/\//i.test(configuredPublicBaseUrl);
 const CAMERA_SESSION_TTL_MS = 2 * 60 * 1000;
 const PERMISSION_SESSION_TTL_MS = 5 * 60 * 1000;
 const LOCATION_REQUEST_TTL_MS = 5 * 60 * 1000;
+const WEB_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const STATE_CLEANUP_INTERVAL_MS = 60 * 1000;
 const ATTENDANCE_RADIUS_METERS = 100;
 const MAX_IMAGE_DIMENSION = 4096;
@@ -193,6 +196,7 @@ const USER_NAMES_PATH = "./user_names.json";
 const DASHBOARD_ACCOUNTS_PATH = "./dashboard_accounts.json";
 const ADMIN_NOTIFICATIONS_PATH = "./admin_notifications.json";
 const BRAND_PATH = "./brand.json";
+const WEB_SESSIONS_PATH = "./web_sessions.json";
 const BRAND_LOGO_DIR = "./brand";
 const DEFAULT_BRAND = {
   name: "Ruang Hadir",
@@ -249,6 +253,7 @@ const JSON_STORES = {
   },
   [ADMIN_NOTIFICATIONS_PATH]: { path: ADMIN_NOTIFICATIONS_PATH, fallback: {} },
   [BRAND_PATH]: { path: BRAND_PATH, fallback: DEFAULT_BRAND },
+  [WEB_SESSIONS_PATH]: { path: WEB_SESSIONS_PATH, fallback: {} },
 };
 
 const jsonState = new JsonState({ writeBatch: saveJsonBatch });
@@ -300,6 +305,54 @@ async function saveJSON(path, data) {
   return jsonState.update(path, (draft) => {
     draft[path] = cloneData(data);
   });
+}
+
+function webSessionKey(token) {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+async function storeWebSession(token, session) {
+  const key = webSessionKey(token);
+  await updateJSON(WEB_SESSIONS_PATH, (draft) => {
+    draft[WEB_SESSIONS_PATH][key] = session;
+  });
+  webSessions.set(key, session);
+}
+
+async function deleteWebSession(token) {
+  const key = webSessionKey(token);
+  webSessions.delete(key);
+  await updateJSON(WEB_SESSIONS_PATH, (draft) => {
+    delete draft[WEB_SESSIONS_PATH][key];
+  });
+}
+
+function deleteWebSessionInBackground(token) {
+  void deleteWebSession(token).catch((error) => {
+    console.error("[Session] Gagal menghapus sesi dashboard:", error.message);
+  });
+}
+
+async function restoreWebSessions() {
+  const now = Date.now();
+  const stored = loadJSON(WEB_SESSIONS_PATH);
+  let changed = false;
+  for (const [key, session] of Object.entries(stored)) {
+    if (
+      !/^[a-f0-9]{64}$/.test(key) ||
+      !session?.id ||
+      !session?.username ||
+      !["admin", "wali_kelas"].includes(session.role) ||
+      !Number.isFinite(session.expiresAt) ||
+      session.expiresAt <= now
+    ) {
+      delete stored[key];
+      changed = true;
+      continue;
+    }
+    webSessions.set(key, session);
+  }
+  if (changed) await saveJSON(WEB_SESSIONS_PATH, stored);
 }
 
 function normalizeBrandName(value) {
@@ -1114,8 +1167,13 @@ const pendingLokasi = new Map();
 
 function cleanupRuntimeState() {
   const now = Date.now();
-  for (const [token, session] of webSessions) {
-    if (session.expiresAt <= now) webSessions.delete(token);
+  for (const [key, session] of webSessions) {
+    if (session.expiresAt <= now) {
+      webSessions.delete(key);
+      void updateJSON(WEB_SESSIONS_PATH, (draft) => {
+        delete draft[WEB_SESSIONS_PATH][key];
+      }).catch((error) => console.error("[Session] Gagal membersihkan sesi:", error.message));
+    }
   }
   for (const [token, session] of cameraSessions) {
     if (session.expiresAt <= now) cameraSessions.delete(token);
@@ -1178,7 +1236,7 @@ whatsapp.on("message", safeAsyncListener(async ({
     } finally {
       if (body.startsWith("!")) {
         console.log(
-          `[Command Performance] ${body.split(/\s+/)[0]} ${sender}: ` +
+          `[Command Performance] ${body.split(/\s+/)[0]}: ` +
             `handler=${replyStartedAt - commandStartedAt}ms reply=${Date.now() - replyStartedAt}ms ` +
             `total=${Date.now() - commandStartedAt}ms`
         );
@@ -1320,9 +1378,9 @@ function parseCookies(req) {
 
 function webUser(req) {
   const token = parseCookies(req).absensi_session;
-  const session = token ? webSessions.get(token) : null;
+  const session = token ? webSessions.get(webSessionKey(token)) : null;
   if (!session || session.expiresAt < Date.now()) {
-    if (token) webSessions.delete(token);
+    if (token && session) deleteWebSessionInBackground(token);
     return null;
   }
   const currentRole = loadRoles()[session.id];
@@ -1332,7 +1390,7 @@ function webUser(req) {
     !["admin", "wali_kelas"].includes(currentRole) ||
     currentAccount?.userId !== session.id
   ) {
-    webSessions.delete(token);
+    deleteWebSessionInBackground(token);
     return null;
   }
   return session;
@@ -1670,13 +1728,13 @@ app.post("/api/auth/login", async (req, res) => {
   const token = crypto.randomBytes(32).toString("hex");
   const nama = await resolveDashboardUserName(id, role);
   const nomor = id.replace("@c.us", "");
-  webSessions.set(token, {
+  await storeWebSession(token, {
     id,
     nomor,
     username,
     nama,
     role,
-    expiresAt: Date.now() + 8 * 60 * 60_000,
+    expiresAt: Date.now() + WEB_SESSION_TTL_MS,
   });
   res.setHeader(
     "Set-Cookie",
@@ -1696,9 +1754,9 @@ app.get("/api/auth/me", (req, res) => {
   });
 });
 
-app.post("/api/auth/logout", (req, res) => {
+app.post("/api/auth/logout", async (req, res) => {
   const token = parseCookies(req).absensi_session;
-  if (token) webSessions.delete(token);
+  if (token) await deleteWebSession(token);
   res.setHeader(
     "Set-Cookie",
     serializeSessionCookie("", { secure: sessionCookieIsSecure(req), maxAge: 0 })
@@ -2382,21 +2440,20 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
           throw error;
         }
         const izin = draft[IZIN_PATH];
+        const botKey = unitBotKey(kelasSiswa);
         izin[tanggal] ||= {};
         izin[tanggal][siswaId] = {
           nama: kontak[siswaId],
           alasan,
-          kelas: kelasSiswa?.namaKelas || "",
-          waliKelas: kelasSiswa?.waliKelas || "",
+          kelas: kelasSiswa.namaKelas,
+          waliKelas: kelasSiswa.waliKelas,
         };
-        if (!kelasSiswa) return [];
         const pesan =
           `📩 *Izin Anggota*\n` +
           `👤 Nama: *${kontak[siswaId]}*\n` +
           `🏢 Unit: ${kelasSiswa.namaKelas}\n` +
           `📅 Tanggal: ${tanggal}\n` +
           `📌 Alasan: ${alasan}`;
-        const botKey = `wali:${normalizeNomor(kelasSiswa.waliKelas)}`;
         return [...getStudentNotificationRecipients(siswaId, kelasSiswa)]
           .map((id) => textNotification(botKey, id, pesan, {
             dedupeKey: `permission-admin:${tanggal}:${siswaId}:${id}`,
@@ -2407,6 +2464,9 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
     if (jobs.length) notificationOutboxProcessor?.wake();
   } catch (error) {
     if (error.code === "ATTENDANCE_CONFLICT") {
+      return res.status(409).json({ error: error.message });
+    }
+    if (error.code === "UNIT_BOT_UNAVAILABLE") {
       return res.status(409).json({ error: error.message });
     }
     throw error;
@@ -2592,7 +2652,7 @@ app.use((error, req, res, next) => {
 let httpServer = null;
 
 function startHttpServer() {
-  httpServer = app.listen(PORT, () => {
+  httpServer = app.listen(PORT, HOST, () => {
     console.log(`🌐 Dashboard: ${publicBaseUrl()}`);
     if (!process.env.PUBLIC_BASE_URL) {
       console.warn(
@@ -2609,6 +2669,7 @@ function startHttpServer() {
 async function startBot() {
   try {
     jsonState.replace(await initJsonStore(JSON_STORES));
+    await restoreWebSessions();
     console.log(`Database Sequelize siap: ${DB_PATH}`);
     if (!Object.keys(loadDashboardAccounts()).length) {
       console.warn(

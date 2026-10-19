@@ -6,6 +6,7 @@
   },
   "main": "index.js",
   "scripts": {
+    "backup": "node scripts/backup.js",
     "build:css": "tailwindcss -i ./assets/dashboard.css -o ./public/dashboard.css --minify",
     "test": "node --test"
   },

@@ -1,0 +1,6 @@
+table inet absensi_universal {
+  chain input {
+    type filter hook input priority -10; policy accept;
+    iifname "ens33" tcp dport 3201 drop
+  }
+}

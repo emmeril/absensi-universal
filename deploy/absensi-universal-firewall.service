@@ -1,0 +1,13 @@
+[Unit]
+Description=Batasi port LAN Absensi Universal
+Before=cloudflared.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/nft delete table inet absensi_universal
+ExecStart=/usr/sbin/nft -f /root/absensi-universal/deploy/absensi-universal-firewall.nft
+ExecStop=-/usr/sbin/nft delete table inet absensi_universal
+
+[Install]
+WantedBy=multi-user.target

@@ -27,6 +27,8 @@ test("login username/password membuat sesi sesuai role tanpa WhatsApp", async ()
     verifyPassword: async (password, hash) => password === hash,
     DUMMY_PASSWORD_HASH: "dummy",
     webSessions: sessions,
+    storeWebSession: async (token, session) => sessions.set(token, session),
+    WEB_SESSION_TTL_MS: 8 * 60 * 60_000,
     resolveDashboardUserName: async () => "Admin",
     serializeSessionCookie: (token) => `absensi_session=${token}`,
     sessionCookieIsSecure: () => true,

@@ -1,0 +1,14 @@
+[Unit]
+Description=Backup data Absensi Universal
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/absensi-universal
+Environment=NODE_ENV=production
+UMask=0077
+ExecStart=/root/.nvm/versions/node/v22.19.0/bin/node /root/absensi-universal/scripts/backup.js
+
+[Install]
+WantedBy=multi-user.target

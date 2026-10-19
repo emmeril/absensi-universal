@@ -85,6 +85,7 @@ Variabel lingkungan utama:
 | `TZ` | `Asia/Jakarta` | Zona waktu aplikasi |
 | `DB_PATH` | `data/absensi.sqlite` | Lokasi database SQLite |
 | `PUBLIC_BASE_URL` | `http://localhost:3200` | Alamat publik untuk tautan kamera |
+| `HOST` | `127.0.0.1` | Interface lokal yang menerima koneksi HTTP |
 | `PORT` | `3200` | Port HTTP lokal aplikasi |
 | `INITIAL_ADMIN_NUMBER` | kosong | Nomor administrator pertama |
 | `INITIAL_ADMIN_USERNAME` | kosong | Username administrator pertama |
@@ -97,6 +98,8 @@ Variabel lingkungan utama:
 | `FACE_TIMEOUT_MS` | `60000` | Batas waktu verifikasi dalam milidetik |
 | `WA_SEND_SAFETY_MODE` | `automatic` | Pengaturan ritme pengiriman WhatsApp |
 | `NOTIFICATION_OUTBOX_CONCURRENCY` | `4` | Jumlah notifikasi yang diproses bersamaan |
+| `BACKUP_DIR` | `data/backups` | Direktori snapshot privat |
+| `BACKUP_RETENTION_DAYS` | `14` | Lama penyimpanan backup harian |
 
 Lihat `.env.example` untuk daftar lengkap pengaturan performa, antrean, dan pengiriman WhatsApp.
 
@@ -121,6 +124,15 @@ npm install -g pm2
 pm2 start ecosystem.config.js
 pm2 save
 ```
+
+Backup manual dapat dibuat dengan `npm run backup`. Untuk server systemd, salin
+unit dan timer dari direktori `deploy`, lalu aktifkan
+`absensi-universal-backup.timer`. Snapshot dibuat secara atomik dan hanya dapat
+dibaca oleh root.
+
+Jika origin Cloudflare harus memakai IP LAN, atur `HOST=0.0.0.0` hanya pada
+`.env` server dan aktifkan `absensi-universal-firewall.service`. Aturan tersebut
+menutup port `3201` dari interface LAN tanpa memutus koneksi tunnel lokal.
 
 ## Kompatibilitas data lama
 

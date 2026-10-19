@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup harian Absensi Universal
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Jakarta
+Persistent=true
+RandomizedDelaySec=10m
+Unit=absensi-universal-backup.service
+
+[Install]
+WantedBy=timers.target
