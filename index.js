@@ -409,7 +409,7 @@ function getWaktu() {
     jam: now.format("HH:mm:ss"),
   };
 }
-async function exportExcel(data) {
+async function exportExcel(data, details = []) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Rekap");
   const headers = data.length ? Object.keys(data[0]) : ["Tanggal"];
@@ -417,6 +417,14 @@ async function exportExcel(data) {
   worksheet.addRows(data);
   worksheet.views = [{ state: "frozen", ySplit: 1 }];
   worksheet.getRow(1).font = { bold: true };
+  if (details.length) {
+    const detailSheet = workbook.addWorksheet("Rincian Harian");
+    const detailHeaders = Object.keys(details[0]);
+    detailSheet.columns = detailHeaders.map((header) => ({ header, key: header }));
+    detailSheet.addRows(details);
+    detailSheet.views = [{ state: "frozen", ySplit: 1 }];
+    detailSheet.getRow(1).font = { bold: true };
+  }
   const output = await workbook.xlsx.writeBuffer();
   return Buffer.from(output);
 }
@@ -2586,6 +2594,40 @@ async function buildReportRangeRows(user, range) {
   return rows;
 }
 
+function attendanceReportRecapRows(rows) {
+  const grouped = new Map();
+  for (const row of rows) {
+    if (!grouped.has(row.nomor)) {
+      grouped.set(row.nomor, {
+        Nama: row.nama,
+        Nomor: row.nomor,
+        Unit: row.kelas === "-" ? "" : row.kelas,
+        "Total Hari": 0,
+        Hadir: 0,
+        "Tepat Waktu": 0,
+        Terlambat: 0,
+        Izin: 0,
+        "Belum Hadir": 0,
+        "Sudah Pulang": 0,
+        "Belum Pulang": 0,
+      });
+    }
+    const recap = grouped.get(row.nomor);
+    recap.Nama = row.nama || recap.Nama;
+    if (row.kelas && row.kelas !== "-") recap.Unit = row.kelas;
+    recap["Total Hari"] += 1;
+    if (row.izin) recap.Izin += 1;
+    else if (row.masuk !== "-") {
+      recap.Hadir += 1;
+      if (row.statusMasuk === "Tepat Waktu") recap["Tepat Waktu"] += 1;
+      if (row.statusMasuk === "Terlambat") recap.Terlambat += 1;
+      if (row.pulang !== "-") recap["Sudah Pulang"] += 1;
+      else recap["Belum Pulang"] += 1;
+    } else recap["Belum Hadir"] += 1;
+  }
+  return [...grouped.values()];
+}
+
 app.get("/api/report", async (req, res) => {
   const tanggal = isValidDate(req.query.date) ? req.query.date : getWaktu().tanggal;
   const rows = await buildReportRows(req.webUser, tanggal);
@@ -2612,17 +2654,17 @@ app.get("/api/export", async (req, res) => {
     }
     const range = exportDateRange(req.query, getWaktu().tanggal);
     const reportRows = await buildReportRangeRows(req.webUser, range);
-    const rows = reportRows.map((row) => ({
-        Tanggal: row.tanggal,
-        Nama: row.nama,
-        Nomor: row.nomor,
-        Unit: row.kelas === "-" ? "" : row.kelas,
-        Masuk: row.masuk === "-" ? "" : row.masuk,
-        StatusMasuk: row.izin ? "Izin" : (row.statusMasuk === "-" ? "" : row.statusMasuk),
-        Pulang: row.pulang === "-" ? "" : row.pulang,
-        Keterangan: row.izin || (row.statusPulang === "-" ? "" : row.statusPulang),
-      }));
-    const buffer = await exportExcel(rows);
+    const detailRows = reportRows.map((row) => ({
+      Tanggal: row.tanggal,
+      Nama: row.nama,
+      Nomor: row.nomor,
+      Unit: row.kelas === "-" ? "" : row.kelas,
+      Masuk: row.masuk === "-" ? "" : row.masuk,
+      "Status Masuk": row.izin ? "Izin" : (row.statusMasuk === "-" ? "" : row.statusMasuk),
+      Pulang: row.pulang === "-" ? "" : row.pulang,
+      Keterangan: row.izin || (row.statusPulang === "-" ? "" : row.statusPulang),
+    }));
+    const buffer = await exportExcel(attendanceReportRecapRows(reportRows), detailRows);
     const label = range.startDate === range.endDate
       ? range.startDate
       : `${range.startDate}-sampai-${range.endDate}`;

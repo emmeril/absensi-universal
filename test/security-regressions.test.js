@@ -124,8 +124,31 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   const rangeWorkbook = new ExcelJS.Workbook();
   await rangeWorkbook.xlsx.load(Buffer.from(await rangeResponse.arrayBuffer()));
   const rangeSheet = rangeWorkbook.getWorksheet("Rekap");
+  const detailSheet = rangeWorkbook.getWorksheet("Rincian Harian");
+  assert.ok(detailSheet);
+  assert.deepEqual(rangeSheet.getRow(1).values.slice(1), [
+    "Nama", "Nomor", "Unit", "Total Hari", "Hadir", "Tepat Waktu", "Terlambat", "Izin",
+    "Belum Hadir", "Sudah Pulang", "Belum Pulang",
+  ]);
+  assert.deepEqual(detailSheet.getRow(1).values.slice(1), [
+    "Tanggal", "Nama", "Nomor", "Unit", "Masuk", "Status Masuk", "Pulang", "Keterangan",
+  ]);
   assert.deepEqual(
-    rangeSheet.getRows(2, rangeSheet.rowCount - 1).map((row) => row.getCell(1).value),
+    rangeSheet.getRows(2, rangeSheet.rowCount - 1).map((row) => [
+      row.getCell(1).value,
+      row.getCell(4).value,
+      row.getCell(5).value,
+      row.getCell(9).value,
+      row.getCell(11).value,
+    ]),
+    [
+      ["Student A", 2, 0, 2, 0],
+      ["Student B", 2, 0, 2, 0],
+      ["Former Student", 2, 2, 0, 2],
+    ]
+  );
+  assert.deepEqual(
+    detailSheet.getRows(2, detailSheet.rowCount - 1).map((row) => row.getCell(1).value),
     ["2026-09-08", "2026-09-08", "2026-09-08", "2026-09-09", "2026-09-09", "2026-09-09"]
   );
   const waliRangeResponse = await fetch(`${url}?user=teacher&startDate=2026-09-08&endDate=2026-09-09`);
@@ -134,8 +157,8 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   await waliRangeWorkbook.xlsx.load(Buffer.from(await waliRangeResponse.arrayBuffer()));
   const waliRangeSheet = waliRangeWorkbook.getWorksheet("Rekap");
   assert.deepEqual(
-    waliRangeSheet.getRows(2, waliRangeSheet.rowCount - 1).map((row) => row.getCell(2).value),
-    ["Student A", "Former Student", "Student A", "Former Student"]
+    waliRangeSheet.getRows(2, waliRangeSheet.rowCount - 1).map((row) => row.getCell(1).value),
+    ["Student A", "Former Student"]
   );
   assert.equal((await fetch(`${url}?user=admin&startDate=2026-09-10&endDate=2026-09-09`)).status, 400);
   assert.equal((await fetch(`${url}?user=admin&startDate=2025-01-01&endDate=2026-01-02`)).status, 400);

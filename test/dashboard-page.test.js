@@ -113,6 +113,9 @@ test("submenu laporan menampilkan tabel rentang tanggal dan unduhan Excel", () =
   assert.match(dashboardPage, /rangeStartDate/);
   assert.match(dashboardPage, /rangeEndDate/);
   assert.match(dashboardPage, /pagedRangeReport/);
+  assert.match(dashboardPage, /rangeReportRecapRows/);
+  assert.match(dashboardPage, />Total Hari</);
+  assert.match(dashboardPage, />Belum Pulang</);
   assert.match(dashboardPage, /\/api\/report-range\?startDate=/);
   assert.match(dashboardPage, /\/api\/export\?startDate=/);
   assert.match(dashboardPage, /Unduh Excel/);
@@ -131,17 +134,21 @@ test("submenu laporan menampilkan tabel rentang tanggal dan unduhan Excel", () =
   state.data.whatsappBots = [];
   state.rangeReportLoaded = true;
   state.rangeReport = { startDate: "2026-10-25", endDate: "2026-10-26", rows: [
-    { tanggal: "2026-10-25", nomor: "621", nama: "Tepat", kelas: "Operasional", masuk: "07:55", pulang: "17:00", statusMasuk: "Tepat Waktu", izin: "" },
-    { tanggal: "2026-10-26", nomor: "622", nama: "Terlambat", kelas: "Operasional", masuk: "08:20", pulang: "-", statusMasuk: "Terlambat", izin: "" },
+    { tanggal: "2026-10-25", nomor: "621", nama: "Anggota A", kelas: "Operasional", masuk: "07:55", pulang: "17:00", statusMasuk: "Tepat Waktu", izin: "" },
+    { tanggal: "2026-10-26", nomor: "621", nama: "Anggota A", kelas: "Operasional", masuk: "08:20", pulang: "-", statusMasuk: "Terlambat", izin: "" },
+    { tanggal: "2026-10-25", nomor: "622", nama: "Anggota B", kelas: "Gudang", masuk: "-", pulang: "-", statusMasuk: "-", izin: "Sakit" },
+    { tanggal: "2026-10-26", nomor: "622", nama: "Anggota B", kelas: "Gudang", masuk: "-", pulang: "-", statusMasuk: "-", izin: "" },
   ] };
   state.rangeStartDate = "2026-10-25";
   state.rangeEndDate = "2026-10-26";
 
-  assert.equal(state.rangeReportPeriodLabel, "25/10/2026 sampai 26/10/2026 · 2 data");
-  assert.deepEqual(Array.from(state.pagedRangeReport, (row) => row.nama), ["Tepat", "Terlambat"]);
-
-  state.rangeReport.rows.push(
-    { tanggal: "2026-10-26", nomor: "623", nama: "Izin", kelas: "Gudang", masuk: "-", pulang: "-", statusMasuk: "-", izin: "Sakit" },
+  assert.equal(state.rangeReportPeriodLabel, "25/10/2026 sampai 26/10/2026 · 2 anggota · 4 catatan");
+  assert.deepEqual(
+    Array.from(state.pagedRangeReport, (row) => ({ ...row })),
+    [
+      { nomor: "621", nama: "Anggota A", kelas: "Operasional", totalHari: 2, hadir: 2, tepatWaktu: 1, terlambat: 1, izin: 0, belumHadir: 0, sudahPulang: 1, belumPulang: 1 },
+      { nomor: "622", nama: "Anggota B", kelas: "Gudang", totalHari: 2, hadir: 0, tepatWaktu: 0, terlambat: 0, izin: 1, belumHadir: 1, sudahPulang: 0, belumPulang: 0 },
+    ]
   );
 
   assert.ok(state.visibleTabs.some((item) => item.id === "laporan"));
