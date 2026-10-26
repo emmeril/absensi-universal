@@ -105,6 +105,19 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   assert.deepEqual(results[0].map((row) => row.Nama), ["Student A", "Former Student"]);
   assert.deepEqual(results[1].map((row) => row.Nama), ["Student A", "Student B", "Former Student"]);
 
+  const reportRangeUrl = `http://127.0.0.1:${server.address().port}/api/report-range`;
+  const reportRangeResponse = await fetch(`${reportRangeUrl}?user=teacher&startDate=2026-09-08&endDate=2026-09-09`);
+  assert.equal(reportRangeResponse.status, 200);
+  const reportRange = await reportRangeResponse.json();
+  assert.equal(reportRange.startDate, "2026-09-08");
+  assert.equal(reportRange.endDate, "2026-09-09");
+  assert.deepEqual(reportRange.rows.map((row) => `${row.tanggal}:${row.nama}`), [
+    "2026-09-08:Student A",
+    "2026-09-08:Former Student",
+    "2026-09-09:Student A",
+    "2026-09-09:Former Student",
+  ]);
+
   const rangeResponse = await fetch(`${url}?user=admin&startDate=2026-09-08&endDate=2026-09-09`);
   assert.equal(rangeResponse.status, 200);
   assert.match(rangeResponse.headers.get("content-disposition"), /Rekap-2026-09-08-sampai-2026-09-09\.xlsx/);

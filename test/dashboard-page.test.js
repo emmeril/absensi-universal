@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const root = path.join(__dirname, "..");
 const dashboardPage = fs.readFileSync(path.join(root, "public", "index.html"), "utf8");
@@ -96,10 +97,58 @@ test("kontak darurat anggota bersifat opsional", () => {
   assert.match(server, /orangTua: orangTua \? `\$\{orangTua\}@c\.us` : ""/);
 });
 
-test("laporan anggota menyediakan tanggal dan ekspor", () => {
+test("ringkasan tetap memakai tabel harian tanpa fitur unduh Excel", () => {
+  assert.match(dashboardPage, /id:"laporan",label:"Laporan Absensi",icon:"fa-solid fa-clipboard-list"/);
+  assert.match(dashboardPage, /tab === 'ringkasan'/);
+  assert.match(dashboardPage, /tab === 'laporan'/);
   assert.match(dashboardPage, /studentDailyReportControls/);
-  assert.match(dashboardPage, /exportStudentReport\(\)/);
+  const ringkasanMarkup = dashboardPage.slice(
+    dashboardPage.indexOf("tab === 'ringkasan'"),
+    dashboardPage.indexOf("tab === 'laporan'")
+  );
+  assert.doesNotMatch(ringkasanMarkup, /Unduh Excel/);
+});
+
+test("submenu laporan menampilkan tabel rentang tanggal dan unduhan Excel", () => {
+  assert.match(dashboardPage, /rangeStartDate/);
+  assert.match(dashboardPage, /rangeEndDate/);
+  assert.match(dashboardPage, /pagedRangeReport/);
+  assert.match(dashboardPage, /\/api\/report-range\?startDate=/);
   assert.match(dashboardPage, /\/api\/export\?startDate=/);
+  assert.match(dashboardPage, /Unduh Excel/);
+
+  const inlineScript = dashboardPage.match(/<script>\s*(function dashboard\(\)[\s\S]*?)<\/script>/);
+  assert.ok(inlineScript, "skrip dashboard ditemukan");
+  const historyCalls = [];
+  const context = {
+    history: { replaceState: (...args) => historyCalls.push(args) },
+    location: { hash: "" },
+  };
+  vm.runInNewContext(`${inlineScript[1]}\nstate = dashboard();`, context);
+  const state = context.state;
+  state.user = { role: "wali_kelas" };
+  state.loading = false;
+  state.data.whatsappBots = [];
+  state.rangeReportLoaded = true;
+  state.rangeReport = { startDate: "2026-10-25", endDate: "2026-10-26", rows: [
+    { tanggal: "2026-10-25", nomor: "621", nama: "Tepat", kelas: "Operasional", masuk: "07:55", pulang: "17:00", statusMasuk: "Tepat Waktu", izin: "" },
+    { tanggal: "2026-10-26", nomor: "622", nama: "Terlambat", kelas: "Operasional", masuk: "08:20", pulang: "-", statusMasuk: "Terlambat", izin: "" },
+  ] };
+  state.rangeStartDate = "2026-10-25";
+  state.rangeEndDate = "2026-10-26";
+
+  assert.equal(state.rangeReportPeriodLabel, "25/10/2026 sampai 26/10/2026 · 2 data");
+  assert.deepEqual(Array.from(state.pagedRangeReport, (row) => row.nama), ["Tepat", "Terlambat"]);
+
+  state.rangeReport.rows.push(
+    { tanggal: "2026-10-26", nomor: "623", nama: "Izin", kelas: "Gudang", masuk: "-", pulang: "-", statusMasuk: "-", izin: "Sakit" },
+  );
+
+  assert.ok(state.visibleTabs.some((item) => item.id === "laporan"));
+  state.changeTab("laporan");
+  assert.equal(state.tab, "laporan");
+  assert.equal(historyCalls.at(-1)[2], "#laporan");
+  assert.equal(state.formatReportDate("2026-10-26"), "26/10/2026");
 });
 
 test("pengaturan brand tetap memiliki pratinjau dan unggah logo", () => {

@@ -2566,7 +2566,7 @@ function exportDateRange(query, fallbackDate) {
     throw Object.assign(new Error("Tanggal akhir tidak boleh sebelum tanggal awal."), { status: 400 });
   }
   if (days > 366) {
-    throw Object.assign(new Error("Rentang export maksimal 366 hari."), { status: 400 });
+    throw Object.assign(new Error("Rentang laporan maksimal 366 hari."), { status: 400 });
   }
   return {
     startDate,
@@ -2577,10 +2577,32 @@ function exportDateRange(query, fallbackDate) {
   };
 }
 
+async function buildReportRangeRows(user, range) {
+  const rows = [];
+  for (const tanggal of range.dates) {
+    const dailyRows = await buildReportRows(user, tanggal);
+    rows.push(...dailyRows.map((row) => ({ tanggal, ...row })));
+  }
+  return rows;
+}
+
 app.get("/api/report", async (req, res) => {
   const tanggal = isValidDate(req.query.date) ? req.query.date : getWaktu().tanggal;
   const rows = await buildReportRows(req.webUser, tanggal);
   res.json({ tanggal, rows });
+});
+
+app.get("/api/report-range", async (req, res) => {
+  try {
+    if (!["admin", "wali_kelas"].includes(req.webUser.role)) {
+      return res.status(403).json({ error: "Laporan absensi hanya tersedia untuk administrator atau pengelola unit." });
+    }
+    const range = exportDateRange(req.query, getWaktu().tanggal);
+    const rows = await buildReportRangeRows(req.webUser, range);
+    res.json({ startDate: range.startDate, endDate: range.endDate, rows });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message || "Laporan absensi gagal dimuat." });
+  }
 });
 
 app.get("/api/export", async (req, res) => {
@@ -2589,19 +2611,17 @@ app.get("/api/export", async (req, res) => {
       return res.status(403).json({ error: "Export absensi anggota hanya tersedia untuk administrator atau pengelola unit." });
     }
     const range = exportDateRange(req.query, getWaktu().tanggal);
-    const rows = [];
-    for (const tanggal of range.dates) {
-      const dailyRows = await buildReportRows(req.webUser, tanggal);
-      rows.push(...dailyRows.map((row) => ({
-        Tanggal: tanggal,
+    const reportRows = await buildReportRangeRows(req.webUser, range);
+    const rows = reportRows.map((row) => ({
+        Tanggal: row.tanggal,
         Nama: row.nama,
+        Nomor: row.nomor,
         Unit: row.kelas === "-" ? "" : row.kelas,
-        Masuk: row.masuk === "-" ? (row.izin ? "IZIN" : "") : row.masuk,
-        StatusMasuk: row.statusMasuk === "-" ? row.izin : row.statusMasuk,
+        Masuk: row.masuk === "-" ? "" : row.masuk,
+        StatusMasuk: row.izin ? "Izin" : (row.statusMasuk === "-" ? "" : row.statusMasuk),
         Pulang: row.pulang === "-" ? "" : row.pulang,
-        StatusPulang: row.statusPulang === "-" ? "" : row.statusPulang,
-      })));
-    }
+        Keterangan: row.izin || (row.statusPulang === "-" ? "" : row.statusPulang),
+      }));
     const buffer = await exportExcel(rows);
     const label = range.startDate === range.endDate
       ? range.startDate
