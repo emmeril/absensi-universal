@@ -412,19 +412,22 @@ function getWaktu() {
 async function exportExcel(data, details = []) {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("Rekap");
-  const headers = data.length ? Object.keys(data[0]) : ["Tanggal"];
+  const headers = data.length ? Object.keys(data[0]) : [
+    "Nama", "Nomor", "Unit", "Total Hari", "Hadir", "Tepat Waktu", "Terlambat", "Izin",
+    "Belum Hadir", "Sudah Pulang", "Belum Pulang",
+  ];
   worksheet.columns = headers.map((header) => ({ header, key: header }));
   worksheet.addRows(data);
   worksheet.views = [{ state: "frozen", ySplit: 1 }];
   worksheet.getRow(1).font = { bold: true };
-  if (details.length) {
-    const detailSheet = workbook.addWorksheet("Rincian Harian");
-    const detailHeaders = Object.keys(details[0]);
-    detailSheet.columns = detailHeaders.map((header) => ({ header, key: header }));
-    detailSheet.addRows(details);
-    detailSheet.views = [{ state: "frozen", ySplit: 1 }];
-    detailSheet.getRow(1).font = { bold: true };
-  }
+  const detailSheet = workbook.addWorksheet("Rincian Harian");
+  const detailHeaders = details.length ? Object.keys(details[0]) : [
+    "Tanggal", "Nama", "Nomor", "Unit", "Masuk", "Status Masuk", "Pulang", "Keterangan",
+  ];
+  detailSheet.columns = detailHeaders.map((header) => ({ header, key: header }));
+  detailSheet.addRows(details);
+  detailSheet.views = [{ state: "frozen", ySplit: 1 }];
+  detailSheet.getRow(1).font = { bold: true };
   const output = await workbook.xlsx.writeBuffer();
   return Buffer.from(output);
 }
@@ -2594,6 +2597,18 @@ async function buildReportRangeRows(user, range) {
   return rows;
 }
 
+function reportUnitFilter(query) {
+  const unit = String(query.unit || "").trim();
+  if (unit.length > 120) {
+    throw Object.assign(new Error("Nama Unit pada filter terlalu panjang."), { status: 400 });
+  }
+  return unit;
+}
+
+function filterReportRowsByUnit(rows, unit) {
+  return unit ? rows.filter((row) => row.kelas === unit) : rows;
+}
+
 function attendanceReportRecapRows(rows) {
   const grouped = new Map();
   for (const row of rows) {
@@ -2640,8 +2655,9 @@ app.get("/api/report-range", async (req, res) => {
       return res.status(403).json({ error: "Laporan absensi hanya tersedia untuk administrator atau pengelola unit." });
     }
     const range = exportDateRange(req.query, getWaktu().tanggal);
-    const rows = await buildReportRangeRows(req.webUser, range);
-    res.json({ startDate: range.startDate, endDate: range.endDate, rows });
+    const unit = reportUnitFilter(req.query);
+    const rows = filterReportRowsByUnit(await buildReportRangeRows(req.webUser, range), unit);
+    res.json({ startDate: range.startDate, endDate: range.endDate, unit, rows });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || "Laporan absensi gagal dimuat." });
   }
@@ -2653,7 +2669,8 @@ app.get("/api/export", async (req, res) => {
       return res.status(403).json({ error: "Export absensi anggota hanya tersedia untuk administrator atau pengelola unit." });
     }
     const range = exportDateRange(req.query, getWaktu().tanggal);
-    const reportRows = await buildReportRangeRows(req.webUser, range);
+    const unit = reportUnitFilter(req.query);
+    const reportRows = filterReportRowsByUnit(await buildReportRangeRows(req.webUser, range), unit);
     const detailRows = reportRows.map((row) => ({
       Tanggal: row.tanggal,
       Nama: row.nama,

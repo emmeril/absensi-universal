@@ -112,12 +112,14 @@ test("ringkasan tetap memakai tabel harian tanpa fitur unduh Excel", () => {
 test("submenu laporan menampilkan tabel rentang tanggal dan unduhan Excel", () => {
   assert.match(dashboardPage, /rangeStartDate/);
   assert.match(dashboardPage, /rangeEndDate/);
+  assert.match(dashboardPage, /aria-label="Filter unit laporan absensi"/);
+  assert.match(dashboardPage, /rangeUnitFilter/);
   assert.match(dashboardPage, /pagedRangeReport/);
   assert.match(dashboardPage, /rangeReportRecapRows/);
   assert.match(dashboardPage, />Total Hari</);
   assert.match(dashboardPage, />Belum Pulang</);
-  assert.match(dashboardPage, /\/api\/report-range\?startDate=/);
-  assert.match(dashboardPage, /\/api\/export\?startDate=/);
+  assert.match(dashboardPage, /\/api\/report-range\?\$\{this\.rangeReportQuery\(\)\}/);
+  assert.match(dashboardPage, /\/api\/export\?\$\{this\.rangeReportQuery\(\)\}/);
   assert.match(dashboardPage, /Unduh Excel/);
 
   const inlineScript = dashboardPage.match(/<script>\s*(function dashboard\(\)[\s\S]*?)<\/script>/);
@@ -142,13 +144,18 @@ test("submenu laporan menampilkan tabel rentang tanggal dan unduhan Excel", () =
   state.rangeStartDate = "2026-10-25";
   state.rangeEndDate = "2026-10-26";
 
-  assert.equal(state.rangeReportPeriodLabel, "25/10/2026 sampai 26/10/2026 · 2 anggota · 4 catatan");
+  assert.equal(state.rangeReportPeriodLabel, "25/10/2026 sampai 26/10/2026 · Semua unit · 2 anggota · 4 catatan");
   assert.deepEqual(
     Array.from(state.pagedRangeReport, (row) => ({ ...row })),
     [
       { nomor: "621", nama: "Anggota A", kelas: "Operasional", totalHari: 2, hadir: 2, tepatWaktu: 1, terlambat: 1, izin: 0, belumHadir: 0, sudahPulang: 1, belumPulang: 1 },
       { nomor: "622", nama: "Anggota B", kelas: "Gudang", totalHari: 2, hadir: 0, tepatWaktu: 0, terlambat: 0, izin: 1, belumHadir: 1, sudahPulang: 0, belumPulang: 0 },
     ]
+  );
+  state.rangeUnitFilter = "Gudang & Logistik";
+  assert.equal(
+    state.rangeReportQuery(),
+    "startDate=2026-10-25&endDate=2026-10-26&unit=Gudang%20%26%20Logistik"
   );
 
   assert.ok(state.visibleTabs.some((item) => item.id === "laporan"));

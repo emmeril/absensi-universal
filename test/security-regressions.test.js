@@ -117,6 +117,14 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
     "2026-09-09:Student A",
     "2026-09-09:Former Student",
   ]);
+  const unitRangeResponse = await fetch(`${reportRangeUrl}?user=admin&startDate=2026-09-08&endDate=2026-09-09&unit=B`);
+  assert.equal(unitRangeResponse.status, 200);
+  const unitRange = await unitRangeResponse.json();
+  assert.equal(unitRange.unit, "B");
+  assert.deepEqual(unitRange.rows.map((row) => row.nama), ["Student B", "Student B"]);
+  const unauthorizedUnitResponse = await fetch(`${reportRangeUrl}?user=teacher&startDate=2026-09-08&endDate=2026-09-09&unit=B`);
+  assert.equal(unauthorizedUnitResponse.status, 200);
+  assert.deepEqual((await unauthorizedUnitResponse.json()).rows, []);
 
   const rangeResponse = await fetch(`${url}?user=admin&startDate=2026-09-08&endDate=2026-09-09`);
   assert.equal(rangeResponse.status, 200);
@@ -151,6 +159,24 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
     detailSheet.getRows(2, detailSheet.rowCount - 1).map((row) => row.getCell(1).value),
     ["2026-09-08", "2026-09-08", "2026-09-08", "2026-09-09", "2026-09-09", "2026-09-09"]
   );
+  const unitExportResponse = await fetch(`${url}?user=admin&startDate=2026-09-08&endDate=2026-09-09&unit=B`);
+  assert.equal(unitExportResponse.status, 200);
+  const unitWorkbook = new ExcelJS.Workbook();
+  await unitWorkbook.xlsx.load(Buffer.from(await unitExportResponse.arrayBuffer()));
+  assert.deepEqual(
+    unitWorkbook.getWorksheet("Rekap").getRows(2, 1).map((row) => row.getCell(1).value),
+    ["Student B"]
+  );
+  assert.deepEqual(
+    unitWorkbook.getWorksheet("Rincian Harian").getRows(2, 2).map((row) => row.getCell(2).value),
+    ["Student B", "Student B"]
+  );
+  const emptyUnitResponse = await fetch(`${url}?user=admin&startDate=2026-09-08&endDate=2026-09-09&unit=Tidak%20Ada`);
+  assert.equal(emptyUnitResponse.status, 200);
+  const emptyUnitWorkbook = new ExcelJS.Workbook();
+  await emptyUnitWorkbook.xlsx.load(Buffer.from(await emptyUnitResponse.arrayBuffer()));
+  assert.equal(emptyUnitWorkbook.getWorksheet("Rekap").rowCount, 1);
+  assert.equal(emptyUnitWorkbook.getWorksheet("Rincian Harian").rowCount, 1);
   const waliRangeResponse = await fetch(`${url}?user=teacher&startDate=2026-09-08&endDate=2026-09-09`);
   assert.equal(waliRangeResponse.status, 200);
   const waliRangeWorkbook = new ExcelJS.Workbook();
