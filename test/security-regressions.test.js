@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const express = require("express");
 const ExcelJS = require("exceljs");
 const { safeAsyncListener } = require("../lib/safe-async-listener");
+const { adminUnitContext } = require("../lib/admin-unit-scope");
 
 const source = fs.readFileSync(require.resolve("../index.js"), "utf8");
 
@@ -70,6 +71,7 @@ test("simultaneous exports retain each user's filtered report", async (t) => {
   });
   const context = {
     app, ExcelJS, Buffer, KONTAK_PATH: "contacts", IZIN_PATH: "permissions",
+    adminUnitContext, loadAdminUnitSettings: () => ({}),
     loadJSON: (key) => key === "contacts" ? { [ids.a]: "Student A", [ids.b]: "Student B" } : {},
     loadJSONSelected: (_key, select) => select({}),
     attendanceForDate: async () => ({
@@ -197,7 +199,7 @@ test("QR dan reset WhatsApp hanya tersedia untuk bot anggota yang berwenang", ()
     { key: "wali:62222", expectedNumber: "62222", qr: "other" },
     { key: "tu:62333", expectedNumber: "62333", role: "tu", qr: "legacy" },
   ];
-  const context = { whatsapp: { statuses: () => bots } };
+  const context = { whatsapp: { statuses: () => bots }, scopeFor: () => ({ globalMode: true }) };
   vm.runInNewContext(
     source.slice(
       source.indexOf("function requireWebAdmin"),

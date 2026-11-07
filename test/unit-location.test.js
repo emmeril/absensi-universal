@@ -6,6 +6,7 @@ const { JsonState } = require("../lib/json-state");
 const { safeAsyncListener } = require("../lib/safe-async-listener");
 const { resolveUnitLocation, resolveLocationUnit } = require("../lib/unit-location");
 const { validateLocationMessage, locationRejectionMessage } = require("../lib/location-message");
+const { adminUnitContext, assertAdminUnitScope } = require("../lib/admin-unit-scope");
 
 const source = fs.readFileSync(require.resolve("../index.js"), "utf8");
 const admin = "6289900000001@c.us";
@@ -25,6 +26,7 @@ function fixture() {
       units: { A: { waliKelas: managerA, siswa: {} }, B: { waliKelas: managerB, siswa: {} } },
       roles: { [admin]: "admin", [managerA]: "wali_kelas", [managerB]: "wali_kelas" },
       location: legacyPoint,
+      adminUnits: {},
     },
     writeBatch: async (draft) => {
       if (persistence.fail) throw new Error("storage unavailable");
@@ -35,9 +37,12 @@ function fixture() {
   const pending = new Map();
   const context = {
     Date, safeAsyncListener, resolveLocationUnit, validateLocationMessage, locationRejectionMessage,
-    KONTAK_PATH: "contacts", ROLE_PATH: "roles", KELAS_PATH: "units", LOKASI_PATH: "location", JAM_PATH: "time",
+    adminUnitContext, assertAdminUnitScope,
+    KONTAK_PATH: "contacts", ROLE_PATH: "roles", KELAS_PATH: "units", LOKASI_PATH: "location", JAM_PATH: "time", ADMIN_UNITS_PATH: "adminUnits",
     LOCATION_REQUEST_TTL_MS: 5 * 60 * 1000,
     loadJSON: (key) => state.read(key), loadKelas: () => state.read("units"),
+    loadAdminUnitSettings: () => state.read("adminUnits"),
+    scopeFor: (user) => adminUnitContext(user, state.read("units"), state.read("adminUnits")),
     updateJSON: (keys, mutate) => state.update(keys, mutate),
     getWaktu: () => ({ tanggal: "2026-11-07", jam: "07:00:00" }),
     sendWhatsappWithRetry: (send) => send(), toUniversalTerms: (text) => text,

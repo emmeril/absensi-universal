@@ -91,6 +91,10 @@ const { toUniversalTerms } = require("./public/universal-copy");
 const { unitBotKey } = require("./lib/unit-bot");
 const { DEFAULT_SCHEDULE, resolveUnitSchedule, assertScheduleAccess } = require("./lib/unit-schedule");
 const { resolveUnitLocation, resolveLocationUnit } = require("./lib/unit-location");
+const {
+  adminUnitContext, adminUnitPolicyInput, assertAdminUnitScope,
+  renameAdminUnitSettings, setActiveAdminUnit, scopeError, unitName,
+} = require("./lib/admin-unit-scope");
 const app = express();
 const PORT = Number(process.env.PORT) || 3200;
 const HOST = String(process.env.HOST || "127.0.0.1");
@@ -197,6 +201,7 @@ const KELAS_PATH = "./kelas.json";
 const USER_NAMES_PATH = "./user_names.json";
 const DASHBOARD_ACCOUNTS_PATH = "./dashboard_accounts.json";
 const ADMIN_NOTIFICATIONS_PATH = "./admin_notifications.json";
+const ADMIN_UNITS_PATH = "./admin_units.json";
 const BRAND_PATH = "./brand.json";
 const WEB_SESSIONS_PATH = "./web_sessions.json";
 const BRAND_LOGO_DIR = "./brand";
@@ -246,6 +251,7 @@ const JSON_STORES = {
     fallback: INITIAL_DASHBOARD_ACCOUNTS,
   },
   [ADMIN_NOTIFICATIONS_PATH]: { path: ADMIN_NOTIFICATIONS_PATH, fallback: {} },
+  [ADMIN_UNITS_PATH]: { path: ADMIN_UNITS_PATH, fallback: {} },
   [BRAND_PATH]: { path: BRAND_PATH, fallback: DEFAULT_BRAND },
   [WEB_SESSIONS_PATH]: { path: WEB_SESSIONS_PATH, fallback: {} },
 };
@@ -768,6 +774,15 @@ function loadAdminNotificationPreferences() {
   return loadJSON(ADMIN_NOTIFICATIONS_PATH, {});
 }
 
+function loadAdminUnitSettings() {
+  return loadJSON(ADMIN_UNITS_PATH, {});
+}
+
+function scopeFor(user, units = loadKelas()) {
+  return adminUnitContext(user, units, loadAdminUnitSettings());
+}
+
+
 function adminIds(roles) {
   return Object.entries(roles)
     .filter(([, role]) => role === "admin")
@@ -834,6 +849,12 @@ function setDashboardAccount(accounts, { username, userId, passwordHash }) {
     }
   }
   accounts[username] = { userId, passwordHash };
+}
+
+function assertGlobalAdminExists(roles, settings) {
+  const hasGlobal = Object.entries(roles).some(([id, role]) =>
+    role === "admin" && settings[id]?.mode !== "selected");
+  if (!hasGlobal) throw scopeError("Minimal satu Administrator harus memiliki akses Seluruh unit.", 400);
 }
 
 function removeDashboardAccount(accounts, userId) {
@@ -999,9 +1020,11 @@ function getStudentNotificationRecipients(studentId, kelasSiswa) {
   const kelas = loadKelas();
   const unitName = kelasSiswa?.namaKelas || "";
   const recipients = new Set(
-    adminIds(roles).filter((id) =>
-      receivesUnit(adminNotificationPreference(id, preferences, kelas), unitName)
-    )
+    adminIds(roles).filter((id) => {
+      const scope = adminUnitContext({ id, role: "admin" }, kelas, loadAdminUnitSettings());
+      return (scope.activeUnit ? scope.activeUnit === unitName : scope.allowedUnits.includes(unitName)) &&
+        receivesUnit(adminNotificationPreference(id, preferences, kelas), unitName);
+    })
   );
   if (kelasSiswa?.waliKelas) recipients.add(kelasSiswa.waliKelas);
   if (kelasSiswa?.siswa[studentId]?.orangTua) {
@@ -1246,7 +1269,7 @@ whatsapp.on("message", safeAsyncListener(async ({
     }
     request.processing = true;
     try {
-      await updateJSON([KELAS_PATH, ROLE_PATH], (draft) => {
+      await updateJSON([KELAS_PATH, ROLE_PATH, ADMIN_UNITS_PATH], (draft) => {
         if (pendingLokasi.get(pendingLocationKey) !== request || request.expiresAt <= Date.now()) {
           const error = new Error("Permintaan lokasi sudah kedaluwarsa. Kirim !lokasi lagi.");
           error.code = "LOCATION_REQUEST_EXPIRED";
@@ -1254,7 +1277,11 @@ whatsapp.on("message", safeAsyncListener(async ({
         }
         const unitName = resolveLocationUnit(draft[KELAS_PATH], {
           botKey, role: draft[ROLE_PATH][sender], name: request.unitName,
+          selectedUnit: adminUnitContext({ id: sender, role: draft[ROLE_PATH][sender] },
+            draft[KELAS_PATH], draft[ADMIN_UNITS_PATH]).activeUnit,
         });
+        assertAdminUnitScope({ id: sender, role: draft[ROLE_PATH][sender] },
+          draft[KELAS_PATH], draft[ADMIN_UNITS_PATH], unitName);
         draft[KELAS_PATH][unitName].lokasi = validation.location;
       });
     } catch (error) {
@@ -1276,9 +1303,13 @@ whatsapp.on("message", safeAsyncListener(async ({
     }
     let unitName;
     try {
-      unitName = resolveLocationUnit(loadKelas(), { botKey, role, name: locationCommand[1] || "" });
+      unitName = resolveLocationUnit(loadKelas(), {
+        botKey, role, name: locationCommand[1] || "",
+        selectedUnit: scopeFor({ id: sender, role }).activeUnit,
+      });
+      assertAdminUnitScope({ id: sender, role }, loadKelas(), loadAdminUnitSettings(), unitName);
     } catch (error) {
-      if (error.code !== "UNIT_LOCATION_ACCESS") throw error;
+      if (!["UNIT_LOCATION_ACCESS", "ADMIN_UNIT_SCOPE"].includes(error.code)) throw error;
       pendingLokasi.delete(pendingLocationKey);
       return replyCommand(error.message);
     }
@@ -1439,6 +1470,15 @@ function requireWebAdmin(req, res, next) {
   next();
 }
 
+function requireWebGlobalAdmin(req, res, next) {
+  try {
+    assertAdminUnitScope(req.webUser, loadKelas(), loadAdminUnitSettings(), "", { global: true });
+    next();
+  } catch (error) {
+    res.status(error.status || 403).json({ error: error.message });
+  }
+}
+
 function requireWhatsappBotAccess(req, res, next) {
   const bot = whatsapp.statuses().find(
     (status) => status.key === req.params.key && status.role !== "tu"
@@ -1449,6 +1489,15 @@ function requireWhatsappBotAccess(req, res, next) {
   const ownsBot =
     req.webUser?.role === "wali_kelas" &&
     bot.expectedNumber === req.webUser.nomor;
+  if (req.webUser?.role === "admin") {
+    const scope = scopeFor(req.webUser);
+    if (!scope.globalMode && !bot.classes?.includes(scope.activeUnit)) {
+      return res.status(403).json({ error: "Bot ini bukan milik unit yang sedang dipilih." });
+    }
+    if (req.method === "POST" && !scope.globalMode && bot.classes?.some((unit) => unit !== scope.activeUnit)) {
+      return res.status(403).json({ error: "Sesi bot bersama tidak dapat direset dari unit tertentu." });
+    }
+  }
   if (req.webUser?.role !== "admin" && !ownsBot) {
     return res.status(403).json({
       error: "Pengelola unit hanya dapat mengelola sesi WhatsApp miliknya.",
@@ -1459,9 +1508,18 @@ function requireWhatsappBotAccess(req, res, next) {
 }
 
 function requireWebPhotoManager(req, res, next) {
-  if (req.webUser?.role === "admin") return next();
-
   const siswaId = `${normalizeNomor(req.params.number)}@c.us`;
+  if (req.webUser?.role === "admin") {
+    try {
+      const units = loadKelas();
+      assertAdminUnitScope(req.webUser, units, loadAdminUnitSettings(),
+        findKelasSiswa(units, siswaId)?.namaKelas);
+      return next();
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
+
   const kelasWali = kelasUntukWali(loadKelas(), req.webUser?.id);
   if (req.webUser?.role === "wali_kelas" && findKelasSiswa(kelasWali, siswaId)) {
     return next();
@@ -1809,11 +1867,29 @@ app.get("/api/brand/logo", (_req, res) => {
 
 app.use("/api", requireWebAuth);
 
+app.post("/api/admin/active-unit", requireWebAdmin, async (req, res) => {
+  if (!req.body || typeof req.body.unit !== "string") {
+    return res.status(400).json({ error: "Pilih unit yang valid." });
+  }
+  try {
+    await updateJSON([ADMIN_UNITS_PATH, KELAS_PATH], (draft) => {
+      setActiveAdminUnit(draft[ADMIN_UNITS_PATH], req.webUser.id, draft[KELAS_PATH], req.body.unit);
+    });
+    res.json({ ok: true, ...scopeFor(req.webUser) });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
+
 async function dashboardData(user) {
   const kontak = loadJSON(KONTAK_PATH);
   const semuaKelas = loadKelas();
-  const kelas =
-    user.role === "admin" ? semuaKelas : kelasUntukWali(semuaKelas, user.id);
+  const adminScope = scopeFor(user, semuaKelas);
+  const kelas = user.role === "admin"
+    ? Object.fromEntries(Object.entries(semuaKelas).filter(([name]) =>
+      adminScope.globalMode || (adminScope.activeUnit
+        ? name === adminScope.activeUnit : adminScope.allowedUnits.includes(name))))
+    : kelasUntukWali(semuaKelas, user.id);
   const roles = loadRoles();
   const accounts = loadDashboardAccounts();
   const adminNotificationPreferences = loadAdminNotificationPreferences();
@@ -1827,7 +1903,8 @@ async function dashboardData(user) {
     Object.values(kelas).flatMap((data) => Object.keys(data.siswa || {}))
   );
   const siswa = Object.entries(kontak)
-    .filter(([id]) => user.role === "admin" || siswaIds.has(id))
+    .filter(([id]) => siswaIds.has(id) || (user.role === "admin" &&
+      adminScope.globalMode && !findKelasSiswa(semuaKelas, id)))
     .map(([id, nama]) => {
     const relasi = findKelasSiswa(kelas, id);
     return {
@@ -1842,9 +1919,13 @@ async function dashboardData(user) {
       izin: izinHariIni[id] || null,
     };
   });
-  const whatsappBots = whatsapp.statuses().filter(
-    (bot) => bot.role !== "tu" && (user.role === "admin" || bot.expectedNumber === user.nomor)
-  );
+  const whatsappBots = whatsapp.statuses()
+    .filter((bot) => bot.role !== "tu" && (user.role === "admin"
+      ? adminScope.globalMode || bot.classes?.some((name) => Object.hasOwn(kelas, name))
+      : bot.expectedNumber === user.nomor))
+    .map((bot) => user.role === "admin" && !adminScope.globalMode
+      ? { ...bot, classes: (bot.classes || []).filter((name) => Object.hasOwn(kelas, name)) }
+      : bot);
 
   return {
     tanggal: today,
@@ -1854,6 +1935,10 @@ async function dashboardData(user) {
       hasQr: Boolean(qr),
     })),
     jam,
+    adminUnitScope: user.role === "admin" ? adminScope : null,
+    availableUnits: user.role === "admin"
+      ? Object.keys(semuaKelas).filter((name) => adminScope.allowedUnits.includes(name))
+      : Object.keys(kelas),
     siswa,
     kelas: Object.entries(kelas).map(([nama, data]) => ({
       nama,
@@ -1863,7 +1948,7 @@ async function dashboardData(user) {
       jumlahSiswa: Object.keys(data.siswa || {}).length,
       jadwal: data.jadwal ? resolveUnitSchedule(jam, data) : null,
     })),
-    admins: user.role === "admin" ? Object.entries(roles)
+    admins: user.role === "admin" && adminScope.globalMode ? Object.entries(roles)
       .filter(([, role]) => ["admin", "wali_kelas"].includes(role))
       .map(([id, role]) => {
         const notificationPreference = role === "admin"
@@ -1877,6 +1962,8 @@ async function dashboardData(user) {
           className: Object.entries(kelas).find(([, data]) => data.waliKelas === id)?.[0] || "",
           notificationMode: notificationPreference.mode,
           notificationUnits: notificationPreference.units,
+          accessMode: loadAdminUnitSettings()[id]?.mode || "all",
+          accessUnits: loadAdminUnitSettings()[id]?.units || [],
         };
       }) : [],
     currentUser: {
@@ -1894,7 +1981,7 @@ app.get("/api/dashboard", async (req, res) => {
   res.json(await dashboardData(req.webUser));
 });
 
-app.post("/api/admins", requireWebAdmin, async (req, res) => {
+app.post("/api/admins", requireWebAdmin, requireWebGlobalAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.body.nomor);
   const originalNomor = normalizeNomor(req.body.originalNomor);
   const nama = toTitleCase(String(req.body.nama || "").trim());
@@ -1933,7 +2020,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
     ? await hashPassword(password)
     : currentAccount.passwordHash;
   try {
-    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, KONTAK_PATH, ADMIN_NOTIFICATIONS_PATH], (draft) => {
+    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, KONTAK_PATH, ADMIN_NOTIFICATIONS_PATH, ADMIN_UNITS_PATH], (draft) => {
       const currentRole = draft[ROLE_PATH][id];
       if (!editing && currentRole) {
         const error = new Error("Nomor tersebut sudah terdaftar sebagai pengguna.");
@@ -1976,6 +2063,13 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
       draft[ROLE_PATH][id] = role;
       draft[USER_NAMES_PATH][id] = nama;
       if (role === "admin") {
+        draft[ADMIN_UNITS_PATH][id] = adminUnitPolicyInput(
+          req.body, draft[KELAS_PATH], draft[ADMIN_UNITS_PATH][id]
+        );
+      } else {
+        delete draft[ADMIN_UNITS_PATH][id];
+      }
+      if (role === "admin") {
         draft[ADMIN_NOTIFICATIONS_PATH][id] = requestedAdminNotificationPreference(
           req.body,
           draft[KELAS_PATH]
@@ -1988,6 +2082,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
         draft[ADMIN_NOTIFICATIONS_PATH],
         draft[KELAS_PATH]
       );
+      assertGlobalAdminExists(draft[ROLE_PATH], draft[ADMIN_UNITS_PATH]);
       setDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], {
         username,
         userId: id,
@@ -1998,7 +2093,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
-    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE", "NOTIFICATION_PREFERENCE", "NOTIFICATION_POLICY"].includes(error.code)) return res.status(400).json({ error: error.message });
+    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE", "NOTIFICATION_PREFERENCE", "NOTIFICATION_POLICY", "ADMIN_UNIT_SCOPE"].includes(error.code)) return res.status(400).json({ error: error.message });
     throw error;
   }
   if (id === req.webUser.id) req.webUser.username = username;
@@ -2006,7 +2101,7 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
   res.status(editing ? 200 : 201).json({ ok: true, nomor, nama, username, role, className });
 });
 
-app.delete("/api/admins/:number", requireWebAdmin, async (req, res) => {
+app.delete("/api/admins/:number", requireWebAdmin, requireWebGlobalAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.params.number);
   if (!/^62\d{8,14}$/.test(nomor)) {
     return res.status(400).json({ error: "Nomor WhatsApp admin belum valid." });
@@ -2019,23 +2114,25 @@ app.delete("/api/admins/:number", requireWebAdmin, async (req, res) => {
 
   let found = false;
   try {
-    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, ADMIN_NOTIFICATIONS_PATH], (draft) => {
+    await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ADMIN_UNITS_PATH], (draft) => {
       if (["admin", "wali_kelas"].includes(draft[ROLE_PATH][id])) {
         found = true;
         for (const data of Object.values(draft[KELAS_PATH])) if (data.waliKelas === id) { data.waliKelas = ""; data.namaWali = ""; }
         delete draft[ROLE_PATH][id];
         delete draft[USER_NAMES_PATH][id];
         delete draft[ADMIN_NOTIFICATIONS_PATH][id];
+        delete draft[ADMIN_UNITS_PATH][id];
         removeDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], id);
         assertAdminNotificationPolicy(
           draft[ROLE_PATH],
           draft[ADMIN_NOTIFICATIONS_PATH],
           draft[KELAS_PATH]
         );
+        assertGlobalAdminExists(draft[ROLE_PATH], draft[ADMIN_UNITS_PATH]);
       }
     });
   } catch (error) {
-    if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
+    if (error.code === "NOTIFICATION_POLICY" || error.code === "ADMIN_UNIT_SCOPE") return res.status(400).json({ error: error.message });
     throw error;
   }
   if (!found) return res.status(404).json({ error: "Pengguna tidak ditemukan." });
@@ -2048,9 +2145,13 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
   const originalNama = String(req.body.originalNama || "").trim().toUpperCase();
   if (!nama) return res.status(400).json({ error: "Nama unit belum valid." });
   try {
-    await updateJSON([KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ROLE_PATH], (draft) => {
+    await updateJSON([KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ROLE_PATH, ADMIN_UNITS_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
       if (originalNama) {
+        assertAdminUnitScope(req.webUser, kelas, draft[ADMIN_UNITS_PATH], originalNama);
+        if (nama !== originalNama && !adminUnitContext(req.webUser, kelas, draft[ADMIN_UNITS_PATH]).globalMode) {
+          throw scopeError("Ubah nama unit hanya tersedia dalam mode Semua unit.");
+        }
         if (!kelas[originalNama]) {
           const error = new Error("Unit yang diedit tidak ditemukan.");
           error.code = "NOT_FOUND";
@@ -2064,6 +2165,7 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
         if (originalNama !== nama) {
           kelas[nama] = kelas[originalNama];
           delete kelas[originalNama];
+          renameAdminUnitSettings(draft[ADMIN_UNITS_PATH], originalNama, nama);
           for (const preference of Object.values(draft[ADMIN_NOTIFICATIONS_PATH])) {
             if (preference?.mode !== "selected" || !Array.isArray(preference.units)) continue;
             preference.units = [...new Set(preference.units.map((unit) =>
@@ -2077,6 +2179,9 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
         throw error;
       }
 
+      if (!originalNama) {
+        assertAdminUnitScope(req.webUser, kelas, draft[ADMIN_UNITS_PATH], "", { global: true });
+      }
       kelas[nama] ||= { siswa: {}, waliKelas: "", namaWali: "" };
       if (!originalNama) {
         const actorPreference = adminNotificationPreference(
@@ -2102,15 +2207,16 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
     throw error;
   }
   res.json({ ok: true });
 });
 
-app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
+app.delete("/api/classes/:name", requireWebAdmin, requireWebGlobalAdmin, async (req, res) => {
   const nama = String(req.params.name || "").toUpperCase();
   try {
-    await updateJSON([KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ROLE_PATH], (draft) => {
+    await updateJSON([KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ROLE_PATH, ADMIN_UNITS_PATH], (draft) => {
       const kelas = draft[KELAS_PATH];
       if (!kelas[nama]) {
         const error = new Error("Unit tidak ditemukan.");
@@ -2123,6 +2229,7 @@ app.delete("/api/classes/:name", requireWebAdmin, async (req, res) => {
         throw error;
       }
       delete kelas[nama];
+      renameAdminUnitSettings(draft[ADMIN_UNITS_PATH], nama);
       const totalAdmins = adminIds(draft[ROLE_PATH]).length;
       for (const [id, rawPreference] of Object.entries(draft[ADMIN_NOTIFICATIONS_PATH])) {
         const preference = normalizeNotificationPreference(rawPreference, [nama, ...Object.keys(kelas)]);
@@ -2178,6 +2285,18 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
       (draft) => {
         const kontak = draft[KONTAK_PATH];
         const kelas = draft[KELAS_PATH];
+        const existingUnit = originalSiswaId
+          ? findKelasSiswa(kelas, originalSiswaId)?.namaKelas : "";
+        if (originalSiswaId && !existingUnit) {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), "", { global: true });
+        } else if (existingUnit) {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), existingUnit);
+        }
+        if (namaKelas) {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), namaKelas);
+        } else {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), "", { global: true });
+        }
         if (namaKelas && !kelas[namaKelas]) {
           throw new Error("Unit tidak lagi tersedia.");
         }
@@ -2236,6 +2355,7 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
       }
     );
   } catch (error) {
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.name === "SequelizeUniqueConstraintError") {
@@ -2263,7 +2383,11 @@ app.delete("/api/students/:number", requireWebAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.params.number);
   const siswaId = `${nomor}@c.us`;
   let foundStudent = false;
+  try {
   await updateJSONAtomic([KONTAK_PATH, KELAS_PATH, IZIN_PATH], (draft) => {
+    const kelasSiswa = findKelasSiswa(draft[KELAS_PATH], siswaId);
+    assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(),
+      kelasSiswa?.namaKelas, { global: !kelasSiswa });
     const kontak = draft[KONTAK_PATH];
     if (!kontak[siswaId]) return;
     foundStudent = true;
@@ -2288,6 +2412,12 @@ app.delete("/api/students/:number", requireWebAdmin, async (req, res) => {
   }, async ({ result, transaction }) => {
     if (result) await fillAttendanceSnapshot(siswaId, result, { transaction });
   });
+  } catch (error) {
+    if (error.code === "ADMIN_UNIT_SCOPE") {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+    throw error;
+  }
   if (!foundStudent) return res.status(404).json({ error: "Anggota tidak ditemukan." });
   for (const root of [FACE_DB, FACE_REC]) {
     deletePrivateFileSafely(path.join(root, `${nomor}.jpg`), root, `foto anggota ${nomor}`);
@@ -2335,6 +2465,7 @@ app.post(
 app.post(
   "/api/settings/brand",
   requireWebAdmin,
+  requireWebGlobalAdmin,
   upload.single("logo"),
   async (req, res) => {
     const name = normalizeBrandName(req.body.name);
@@ -2385,7 +2516,7 @@ app.post(
   }
 );
 
-app.delete("/api/settings/brand/logo", requireWebAdmin, async (_req, res) => {
+app.delete("/api/settings/brand/logo", requireWebAdmin, requireWebGlobalAdmin, async (_req, res) => {
   const current = loadBrandSettings();
   await saveJSON(BRAND_PATH, {
     ...current,
@@ -2443,6 +2574,10 @@ app.post("/api/settings/time", async (req, res) => {
   try {
     await updateJSON([JAM_PATH, KELAS_PATH], (draft) => {
       assertScheduleAccess(req.webUser, draft[KELAS_PATH], unit);
+      if (req.webUser.role === "admin") {
+        assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(),
+          unit, { global: !unit });
+      }
       if (unit) draft[KELAS_PATH][unit].jadwal = schedule;
       else draft[JAM_PATH] = { ...draft[JAM_PATH], ...schedule };
     });
@@ -2461,6 +2596,9 @@ app.delete("/api/settings/time", async (req, res) => {
   try {
     await updateJSON(KELAS_PATH, (draft) => {
       assertScheduleAccess(req.webUser, draft[KELAS_PATH], unit);
+      if (req.webUser.role === "admin") {
+        assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(), unit);
+      }
       delete draft[KELAS_PATH][unit].jadwal;
     });
   } catch (error) {
@@ -2484,6 +2622,7 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
       async (draft) => {
         const kontak = draft[KONTAK_PATH];
         const kelasSiswa = findKelasSiswa(draft[KELAS_PATH], siswaId);
+        assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(), kelasSiswa?.namaKelas);
         if (!kontak[siswaId]) throw new Error("Anggota sudah tidak terdaftar.");
         const attendance = await attendanceStatus(tanggal, siswaId);
         const permissionError = validatePermission({
@@ -2525,6 +2664,9 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
     if (error.code === "UNIT_BOT_UNAVAILABLE") {
       return res.status(409).json({ error: error.message });
     }
+    if (error.code === "ADMIN_UNIT_SCOPE") {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
     throw error;
   }
 
@@ -2538,16 +2680,23 @@ app.delete("/api/permissions/:date/:number", requireWebAdmin, async (req, res) =
   const siswaId = `${normalizeNomor(req.params.number)}@c.us`;
   const filesToDelete = [];
   let found = false;
+  try {
   await updateJSONAtomic(IZIN_PATH, (draft) => {
     const izin = draft[IZIN_PATH];
     const record = izin[req.params.date]?.[siswaId];
     if (!record) return;
+    assertAdminUnitScope(req.webUser, loadKelas(), loadAdminUnitSettings(),
+      record.kelas || findKelasSiswa(loadKelas(), siswaId)?.namaKelas);
     found = true;
     if (record.bukti) filesToDelete.push(record.bukti);
     if (record.selfie) filesToDelete.push(record.selfie);
     delete izin[req.params.date][siswaId];
     if (!Object.keys(izin[req.params.date]).length) delete izin[req.params.date];
   }, ({ transaction }) => cancelNotificationsForMediaPaths(filesToDelete, { transaction }));
+  } catch (error) {
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
+    throw error;
+  }
   if (!found) return res.status(404).json({ error: "Izin tidak ditemukan." });
   for (const file of filesToDelete) {
     deletePrivateFileSafely(file, IZIN_BUKTI_DIR, `bukti izin ${siswaId}`);
@@ -2558,6 +2707,14 @@ app.delete("/api/permissions/:date/:number", requireWebAdmin, async (req, res) =
 app.get("/api/permissions/:date/:number/evidence", (req, res) => {
   const siswaId = `${normalizeNomor(req.params.number)}@c.us`;
   const permission = loadIzin()[req.params.date]?.[siswaId];
+  if (req.webUser.role === "admin" && permission) {
+    try {
+      assertAdminUnitScope(req.webUser, loadKelas(), loadAdminUnitSettings(),
+        permission.kelas || findKelasSiswa(loadKelas(), siswaId)?.namaKelas);
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
   if (
     req.webUser.role === "wali_kelas" &&
     permission?.waliKelas !== req.webUser.id &&
@@ -2578,6 +2735,7 @@ async function buildReportRows(user, tanggal) {
   const izin = loadJSONSelected(IZIN_PATH, (records) => records[tanggal] || {});
   const kelas = loadKelas();
   const kelasWali = kelasUntukWali(kelas, user.id);
+  const scope = adminUnitContext(user, kelas, loadAdminUnitSettings());
   const studentIds = new Set([
     ...Object.keys(kontak),
     ...Object.keys(storage),
@@ -2585,7 +2743,13 @@ async function buildReportRows(user, tanggal) {
   ]);
   return [...studentIds]
     .filter((id) => {
-      if (user.role === "admin") return true;
+      if (user.role === "admin") {
+        if (scope.globalMode) return true;
+        const snapshot = storage[id]?.masuk || storage[id]?.pulang || izin[id];
+        const currentUnit = findKelasSiswa(kelas, id)?.namaKelas;
+        const unit = snapshot?.kelas || currentUnit;
+        return scope.activeUnit ? unit === scope.activeUnit : scope.allowedUnits.includes(unit);
+      }
       if (findKelasSiswa(kelasWali, id)) return true;
       const snapshot = storage[id]?.masuk || storage[id]?.pulang || izin[id];
       return snapshot?.waliKelas === user.id;

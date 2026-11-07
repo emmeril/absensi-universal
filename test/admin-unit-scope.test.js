@@ -1,0 +1,90 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const {
+  adminUnitContext,
+  adminUnitPolicyInput,
+  assertAdminUnitScope,
+  renameAdminUnitSettings,
+  setActiveAdminUnit,
+} = require("../lib/admin-unit-scope");
+const { resolveLocationUnit } = require("../lib/unit-location");
+
+const admin = { id: "admin@c.us", role: "admin" };
+const managerA = "628111111111@c.us";
+const managerB = "628222222222@c.us";
+const units = {
+  GUDANG: { waliKelas: managerA, siswa: {} },
+  KANTOR: { waliKelas: managerB, siswa: {} },
+  TOKO: { waliKelas: managerB, siswa: {} },
+};
+const scoped = () => ({
+  [admin.id]: { mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "GUDANG" },
+});
+
+test("administrator lama tetap global tanpa policy migrasi", () => {
+  const scope = adminUnitContext(admin, units, {});
+  assert.equal(scope.globalMode, true);
+  assert.deepEqual(scope.allowedUnits.sort(), Object.keys(units).sort());
+});
+
+test("administrator terbatas hanya melihat unit yang diberikan", () => {
+  const scope = adminUnitContext(admin, units, scoped());
+  assert.equal(scope.restricted, true);
+  assert.equal(scope.activeUnit, "GUDANG");
+  assert.deepEqual(scope.allowedUnits, ["GUDANG", "KANTOR"]);
+});
+
+test("akses data unit tidak bisa dilewati hanya dengan mengganti parameter", () => {
+  const settings = scoped();
+  assert.doesNotThrow(() => assertAdminUnitScope(admin, units, settings, "GUDANG"));
+  assert.throws(() => assertAdminUnitScope(admin, units, settings, "KANTOR"), { status: 403 });
+  assert.throws(() => assertAdminUnitScope(admin, units, settings, "TOKO"), { status: 403 });
+  assert.throws(() => assertAdminUnitScope(admin, units, settings, "", { global: true }), { status: 403 });
+});
+
+test("pindah unit hanya mengizinkan unit yang ditugaskan", () => {
+  const settings = scoped();
+  assert.equal(setActiveAdminUnit(settings, admin.id, units, "KANTOR"), "KANTOR");
+  assert.doesNotThrow(() => assertAdminUnitScope(admin, units, settings, "KANTOR"));
+  assert.throws(() => assertAdminUnitScope(admin, units, settings, "TOKO"), { status: 403 });
+  assert.throws(() => setActiveAdminUnit(settings, admin.id, units, ""), { status: 403 });
+});
+
+test("administrator global dapat kembali ke seluruh unit", () => {
+  const settings = {};
+  setActiveAdminUnit(settings, admin.id, units, "GUDANG");
+  assert.throws(() => assertAdminUnitScope(admin, units, settings, "KANTOR"), { status: 403 });
+  setActiveAdminUnit(settings, admin.id, units, "");
+  assert.doesNotThrow(() => assertAdminUnitScope(admin, units, settings, "", { global: true }));
+});
+
+test("cakupan akses admin divalidasi saat menyimpan akun", () => {
+  assert.throws(() => adminUnitPolicyInput({ accessMode: "selected", accessUnits: [] }, units), { status: 400 });
+  assert.throws(() => adminUnitPolicyInput({ accessMode: "selected", accessUnits: ["LAIN"] }, units), { status: 400 });
+  assert.deepEqual(adminUnitPolicyInput({
+    accessMode: "selected", accessUnits: ["GUDANG", "GUDANG"],
+  }, units), { mode: "selected", units: ["GUDANG"], activeUnit: "GUDANG" });
+});
+
+test("ganti nama dan hapus unit memperbaiki daftar akses administrator", () => {
+  const settings = scoped();
+  renameAdminUnitSettings(settings, "GUDANG", "LOGISTIK");
+  assert.deepEqual(settings[admin.id], {
+    mode: "selected", units: ["LOGISTIK", "KANTOR"], activeUnit: "LOGISTIK",
+  });
+  renameAdminUnitSettings(settings, "LOGISTIK");
+  assert.deepEqual(settings[admin.id].units, ["KANTOR"]);
+  assert.equal(settings[admin.id].activeUnit, "");
+});
+
+test("perintah lokasi dibatasi ke bot unit aktif", () => {
+  assert.equal(resolveLocationUnit(units, {
+    botKey: "wali:628111111111", role: "admin", selectedUnit: "GUDANG",
+  }), "GUDANG");
+  assert.throws(() => resolveLocationUnit(units, {
+    botKey: "wali:628222222222", role: "admin", selectedUnit: "GUDANG",
+  }), /bukan bot unit aktif/);
+  assert.throws(() => resolveLocationUnit(units, {
+    botKey: "wali:628222222222", role: "admin", selectedUnit: "KANTOR", name: "TOKO",
+  }), /Pilih unit yang sesuai/);
+});
