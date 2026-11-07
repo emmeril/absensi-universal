@@ -42,7 +42,8 @@ Dashboard memakai role `admin` dan `wali_kelas`. Data role lama tetap disimpan a
 | `!masuk` | Membuka absensi masuk | Anggota terdaftar |
 | `!pulang` | Membuka absensi pulang | Anggota terdaftar |
 | `!izin alasan` | Membuka pengajuan izin | Anggota terdaftar |
-| `!lokasi` | Mengatur titik lokasi kegiatan | Administrator |
+| `!lokasi` | Mengatur titik lokasi unit yang dilayani bot | Administrator |
+| `!lokasi NAMA UNIT` | Memilih unit jika satu bot melayani beberapa unit | Administrator |
 | `!bantuan` | Menampilkan bantuan sesuai peran | Semua pengguna |
 
 Anggota harus mengirim perintah ke nomor Bot Anggota milik unitnya. Tautan masuk atau pulang berlaku selama dua menit. Tautan izin berlaku selama lima menit.
@@ -116,7 +117,7 @@ Buka dashboard di `http://localhost:3200`. Setelah masuk:
 2. Buat akun pengelola unit bila diperlukan.
 3. Tambahkan anggota dan foto referensinya.
 4. Hubungkan nomor pada **Pengaturan > Bot Anggota**.
-5. Atur titik lokasi kegiatan dengan perintah `!lokasi`.
+5. Kirim `!lokasi` ke bot masing-masing unit, lalu bagikan **lokasi Anda saat ini** melalui WhatsApp.
 6. Buka **Pengaturan Jadwal**, pilih unit, lalu klik **Ubah jadwal**.
 
 Unit yang belum mempunyai jadwal khusus mengikuti jadwal organisasi. Administrator
@@ -126,6 +127,18 @@ unit dan memakai kembali acuan organisasi. Jam masuk, jam pulang, toleransi, dan
 rentang absensi unit berlaku pada perintah WhatsApp serta saat absensi kamera dicatat.
 Jadwal khusus disimpan bersama unit, sehingga ikut berpindah saat unit berganti nama
 dan ikut dihapus saat unit dihapus. Jadwal organisasi yang sudah tersimpan tetap dipakai.
+
+Titik lokasi setiap unit dapat berbeda. Administrator dapat mengaturnya melalui
+bot unit yang dituju. Jika satu bot melayani beberapa unit, pilih secara jelas dengan
+`!lokasi NAMA UNIT`, misalnya `!lokasi GUDANG`. Permintaan berlaku lima menit.
+Lokasi yang diteruskan, hasil pencarian tempat, atau pin peta ditolak.
+
+Lokasi unit disimpan bersama data unit dan dipakai untuk memeriksa radius GPS
+100 meter saat absensi masuk atau pulang dicatat. Mengatur lokasi satu unit tidak
+mengubah lokasi unit lain. Unit yang belum diatur tetap memakai titik organisasi
+yang sudah tersimpan agar absensi lama tetap berjalan. Lokasi khusus ikut terbawa
+saat unit berganti nama dan ikut dihapus bersama unit. Pengajuan izin tetap dapat
+dilakukan dari luar area kegiatan.
 
 Untuk produksi dengan PM2:
 

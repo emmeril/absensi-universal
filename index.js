@@ -90,6 +90,7 @@ const {
 const { toUniversalTerms } = require("./public/universal-copy");
 const { unitBotKey } = require("./lib/unit-bot");
 const { DEFAULT_SCHEDULE, resolveUnitSchedule, assertScheduleAccess } = require("./lib/unit-schedule");
+const { resolveUnitLocation, resolveLocationUnit } = require("./lib/unit-location");
 const app = express();
 const PORT = Number(process.env.PORT) || 3200;
 const HOST = String(process.env.HOST || "127.0.0.1");
@@ -860,7 +861,7 @@ function teksBantuan(role, terdaftar) {
     lines.push(
       "",
       "Akses: Administrator",
-      "• *!lokasi* - Mengatur titik lokasi kegiatan melalui salah satu bot pengelola unit. Setelah perintah ini, bagikan lokasi kegiatan melalui fitur Lokasi WhatsApp.",
+      "• *!lokasi* - Mengatur titik lokasi untuk unit yang dilayani bot ini. Jika bot melayani beberapa unit, ketik *!lokasi NAMA UNIT*. Setelah itu, kirim lokasi Anda saat ini melalui WhatsApp.",
       "• *!bantuan* - Menampilkan daftar perintah yang tersedia untuk role kamu.",
       "",
       `Pengelolaan anggota, unit, jadwal, izin, admin, dan laporan tersedia di dashboard: ${publicBaseUrl()}`
@@ -1021,10 +1022,10 @@ async function catatAbsensiKamera(userId, tipe, lokasi, foto, botKey) {
       const kontak = loadJSON(KONTAK_PATH);
       const kelasSiswa = findKelasSiswa(loadKelas(), userId);
       const jamResmi = resolveUnitSchedule(loadJSON(JAM_PATH), kelasSiswa);
-      const lokasiKantor = loadJSON(LOKASI_PATH, {
+      const lokasiKantor = resolveUnitLocation(loadJSON(LOKASI_PATH, {
         latitude: -6.7329,
         longitude: 108.5522,
-      });
+      }), kelasSiswa);
       if (haversine(lokasi, lokasiKantor) > ATTENDANCE_RADIUS_METERS) {
         throw new Error("Kamu berada di luar area kegiatan.");
       }
@@ -1177,8 +1178,8 @@ function cleanupRuntimeState() {
   for (const [token, session] of permissionSessions) {
     if (session.expiresAt <= now) permissionSessions.delete(token);
   }
-  for (const [id, expiresAt] of pendingLokasi) {
-    if (expiresAt <= now) pendingLokasi.delete(id);
+  for (const [id, request] of pendingLokasi) {
+    if (request.expiresAt <= now) pendingLokasi.delete(id);
   }
 }
 
@@ -1232,19 +1233,59 @@ whatsapp.on("message", safeAsyncListener(async ({
   }
 
   const pendingLocationKey = `${botKey}:${sender}`;
-  if (msg.type === "location" && pendingLokasi.get(pendingLocationKey) > Date.now()) {
+  if (msg.type === "location" && pendingLokasi.has(pendingLocationKey)) {
+    const request = pendingLokasi.get(pendingLocationKey);
+    if (request.expiresAt <= Date.now()) {
+      pendingLokasi.delete(pendingLocationKey);
+      return replyCommand("Permintaan lokasi sudah kedaluwarsa. Kirim !lokasi lagi melalui bot unit yang dituju.");
+    }
+    if (request.processing) return replyCommand("Lokasi unit sedang disimpan. Tunggu konfirmasi.");
     const validation = validateLocationMessage(msg);
     if (!validation.valid) {
       return replyCommand(locationRejectionMessage(validation.reason));
     }
-    await saveJSON(LOKASI_PATH, validation.location);
-    pendingLokasi.delete(pendingLocationKey);
-    return replyCommand("✅ Lokasi kegiatan disimpan.");
+    request.processing = true;
+    try {
+      await updateJSON([KELAS_PATH, ROLE_PATH], (draft) => {
+        if (pendingLokasi.get(pendingLocationKey) !== request || request.expiresAt <= Date.now()) {
+          const error = new Error("Permintaan lokasi sudah kedaluwarsa. Kirim !lokasi lagi.");
+          error.code = "LOCATION_REQUEST_EXPIRED";
+          throw error;
+        }
+        const unitName = resolveLocationUnit(draft[KELAS_PATH], {
+          botKey, role: draft[ROLE_PATH][sender], name: request.unitName,
+        });
+        draft[KELAS_PATH][unitName].lokasi = validation.location;
+      });
+    } catch (error) {
+      request.processing = false;
+      if (["UNIT_LOCATION_ACCESS", "LOCATION_REQUEST_EXPIRED"].includes(error.code)) {
+        if (pendingLokasi.get(pendingLocationKey) === request) pendingLokasi.delete(pendingLocationKey);
+        return replyCommand(error.message);
+      }
+      console.error("[Lokasi Unit] Gagal menyimpan:", error.message);
+      return replyCommand("Lokasi unit gagal disimpan. Coba kirim ulang lokasi Anda saat ini.");
+    }
+    if (pendingLokasi.get(pendingLocationKey) === request) pendingLokasi.delete(pendingLocationKey);
+    return replyCommand(`Lokasi untuk unit ${request.unitName} disimpan.`);
   }
-  if (body === "!lokasi" || body === "!setlokasi") {
-    if (role !== "admin") return replyCommand("❌ Hanya administrator yang dapat mengatur lokasi.");
-    pendingLokasi.set(pendingLocationKey, Date.now() + LOCATION_REQUEST_TTL_MS);
-    return replyCommand("📍 Bagikan lokasi kegiatan sekarang melalui fitur Lokasi WhatsApp.");
+  const locationCommand = String(msg.body || "").trim().match(/^!(?:lokasi|setlokasi)(?:\s+([\s\S]+))?$/i);
+  if (locationCommand) {
+    if (pendingLokasi.get(pendingLocationKey)?.processing) {
+      return replyCommand("Lokasi unit sedang disimpan. Tunggu konfirmasi.");
+    }
+    let unitName;
+    try {
+      unitName = resolveLocationUnit(loadKelas(), { botKey, role, name: locationCommand[1] || "" });
+    } catch (error) {
+      if (error.code !== "UNIT_LOCATION_ACCESS") throw error;
+      pendingLokasi.delete(pendingLocationKey);
+      return replyCommand(error.message);
+    }
+    pendingLokasi.set(pendingLocationKey, {
+      unitName, expiresAt: Date.now() + LOCATION_REQUEST_TTL_MS, processing: false,
+    });
+    return replyCommand(`Kirim lokasi Anda saat ini melalui fitur Lokasi WhatsApp untuk unit ${unitName}. Permintaan berlaku selama 5 menit.`);
   }
 
   const kelasSiswa = findKelasSiswa(loadKelas(), sender);
