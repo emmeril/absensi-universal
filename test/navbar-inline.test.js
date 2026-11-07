@@ -15,12 +15,22 @@ test("header keeps unit selector and account menu in a single row", () => {
 });
 
 test("narrow screens reserve room for accessible controls", () => {
-  assert.match(html, /@media \(max-width:\s*479px\)\s*\{[^}]*\.navbar-page-heading\s*\{\s*display:\s*none/);
+  assert.match(html, /@media \(max-width:\s*767px\)\s*\{[^}]*\.navbar-primary\s*\{\s*flex:\s*0 0 auto/);
+  assert.match(html, /\.navbar-page-heading\s*\{\s*display:\s*none/);
   assert.match(header, /aria-label="Pilih unit aktif"/);
   assert.match(header, /aria-label="Buka menu akun"/);
   assert.match(header, /@change="selectActiveUnit\(\$event\)"/);
   assert.match(header, /min-h-11 shrink-0 flex-nowrap/);
+  assert.doesNotMatch(header, /class="sr-only">Unit aktif/);
+  assert.match(html, /\.navbar-unit-select\s*\{\s*width:\s*100%/);
+  assert.match(html, /\.navbar-unit-field\s*\{\s*flex:\s*0 1 15rem/);
   assert.match(html, /\.navbar-primary\s*\{[^}]*min-width:\s*0/);
+});
+
+test("unit selector stays on one row without an accidental visible label", () => {
+  assert.doesNotMatch(header, /<label[^>]*navbar-unit-field/);
+  assert.match(header, /<div x-show="user\?\.role === 'admin'" class="navbar-unit-field">/);
+  assert.match(header, /aria-label="Pilih unit aktif"/);
 });
 
 test("account details remain available without crowding tablet navbar", () => {
