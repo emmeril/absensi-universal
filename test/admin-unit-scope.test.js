@@ -153,3 +153,26 @@ test("kebijakan lama tanpa unit aktif memilih unit pertama yang valid secara det
   assert.deepEqual(scope.allowedUnits, ["GUDANG"]);
   assert.equal(scope.activeUnit, "GUDANG");
 });
+
+test("hapus unit terpilih tidak otomatis memberikan unit lain dari kebijakan lama", () => {
+  const settings = { [admin.id]: {
+    mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "KANTOR",
+  } };
+  renameAdminUnitSettings(settings, "KANTOR");
+  assert.deepEqual(settings[admin.id].units, []);
+  assert.equal(settings[admin.id].activeUnit, "");
+  const remaining = { GUDANG: units.GUDANG, TOKO: units.TOKO };
+  const scope = adminUnitContext(admin, remaining, settings);
+  assert.deepEqual(scope.allowedUnits, []);
+  assert.throws(() => setActiveAdminUnit(settings, admin.id, remaining, ""), { status: 403 });
+  assert.throws(() => assertAdminUnitScope(admin, remaining, settings, "GUDANG"), { status: 403 });
+});
+
+test("mengubah unit bukan target hanya mempertahankan satu unit efektif", () => {
+  const settings = { [admin.id]: {
+    mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "KANTOR",
+  } };
+  renameAdminUnitSettings(settings, "GUDANG", "LOGISTIK");
+  assert.deepEqual(settings[admin.id].units, ["KANTOR"]);
+  assert.equal(settings[admin.id].activeUnit, "KANTOR");
+});
