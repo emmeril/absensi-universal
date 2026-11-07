@@ -91,6 +91,10 @@ const { toUniversalTerms } = require("./public/universal-copy");
 const { unitBotKey } = require("./lib/unit-bot");
 const { DEFAULT_SCHEDULE, resolveUnitSchedule, assertScheduleAccess } = require("./lib/unit-schedule");
 const { resolveUnitLocation, resolveLocationUnit } = require("./lib/unit-location");
+const {
+  adminUnitContext, adminUnitPolicyInput, assertAdminUnitScope,
+  renameAdminUnitSettings, setActiveAdminUnit, scopeError, unitName,
+} = require("./lib/admin-unit-scope");
 const app = express();
 const PORT = Number(process.env.PORT) || 3200;
 const HOST = String(process.env.HOST || "127.0.0.1");
@@ -197,6 +201,7 @@ const KELAS_PATH = "./kelas.json";
 const USER_NAMES_PATH = "./user_names.json";
 const DASHBOARD_ACCOUNTS_PATH = "./dashboard_accounts.json";
 const ADMIN_NOTIFICATIONS_PATH = "./admin_notifications.json";
+const ADMIN_UNITS_PATH = "./admin_units.json";
 const BRAND_PATH = "./brand.json";
 const WEB_SESSIONS_PATH = "./web_sessions.json";
 const BRAND_LOGO_DIR = "./brand";
@@ -246,6 +251,7 @@ const JSON_STORES = {
     fallback: INITIAL_DASHBOARD_ACCOUNTS,
   },
   [ADMIN_NOTIFICATIONS_PATH]: { path: ADMIN_NOTIFICATIONS_PATH, fallback: {} },
+  [ADMIN_UNITS_PATH]: { path: ADMIN_UNITS_PATH, fallback: {} },
   [BRAND_PATH]: { path: BRAND_PATH, fallback: DEFAULT_BRAND },
   [WEB_SESSIONS_PATH]: { path: WEB_SESSIONS_PATH, fallback: {} },
 };
@@ -768,6 +774,15 @@ function loadAdminNotificationPreferences() {
   return loadJSON(ADMIN_NOTIFICATIONS_PATH, {});
 }
 
+function loadAdminUnitSettings() {
+  return loadJSON(ADMIN_UNITS_PATH, {});
+}
+
+function scopeFor(user, units = loadKelas()) {
+  return adminUnitContext(user, units, loadAdminUnitSettings());
+}
+
+
 function adminIds(roles) {
   return Object.entries(roles)
     .filter(([, role]) => role === "admin")
@@ -1000,6 +1015,8 @@ function getStudentNotificationRecipients(studentId, kelasSiswa) {
   const unitName = kelasSiswa?.namaKelas || "";
   const recipients = new Set(
     adminIds(roles).filter((id) =>
+      adminUnitContext({ id, role: "admin" }, kelas, loadAdminUnitSettings())
+        .allowedUnits.includes(unitName) &&
       receivesUnit(adminNotificationPreference(id, preferences, kelas), unitName)
     )
   );
@@ -1246,7 +1263,7 @@ whatsapp.on("message", safeAsyncListener(async ({
     }
     request.processing = true;
     try {
-      await updateJSON([KELAS_PATH, ROLE_PATH], (draft) => {
+      await updateJSON([KELAS_PATH, ROLE_PATH, ADMIN_UNITS_PATH], (draft) => {
         if (pendingLokasi.get(pendingLocationKey) !== request || request.expiresAt <= Date.now()) {
           const error = new Error("Permintaan lokasi sudah kedaluwarsa. Kirim !lokasi lagi.");
           error.code = "LOCATION_REQUEST_EXPIRED";
@@ -1254,7 +1271,11 @@ whatsapp.on("message", safeAsyncListener(async ({
         }
         const unitName = resolveLocationUnit(draft[KELAS_PATH], {
           botKey, role: draft[ROLE_PATH][sender], name: request.unitName,
+          selectedUnit: adminUnitContext({ id: sender, role: draft[ROLE_PATH][sender] },
+            draft[KELAS_PATH], draft[ADMIN_UNITS_PATH]).activeUnit,
         });
+        assertAdminUnitScope({ id: sender, role: draft[ROLE_PATH][sender] },
+          draft[KELAS_PATH], draft[ADMIN_UNITS_PATH], unitName);
         draft[KELAS_PATH][unitName].lokasi = validation.location;
       });
     } catch (error) {
@@ -1276,9 +1297,13 @@ whatsapp.on("message", safeAsyncListener(async ({
     }
     let unitName;
     try {
-      unitName = resolveLocationUnit(loadKelas(), { botKey, role, name: locationCommand[1] || "" });
+      unitName = resolveLocationUnit(loadKelas(), {
+        botKey, role, name: locationCommand[1] || "",
+        selectedUnit: scopeFor({ id: sender, role }).activeUnit,
+      });
+      assertAdminUnitScope({ id: sender, role }, loadKelas(), loadAdminUnitSettings(), unitName);
     } catch (error) {
-      if (error.code !== "UNIT_LOCATION_ACCESS") throw error;
+      if (!["UNIT_LOCATION_ACCESS", "ADMIN_UNIT_SCOPE"].includes(error.code)) throw error;
       pendingLokasi.delete(pendingLocationKey);
       return replyCommand(error.message);
     }
@@ -1439,6 +1464,15 @@ function requireWebAdmin(req, res, next) {
   next();
 }
 
+function requireWebGlobalAdmin(req, res, next) {
+  try {
+    assertAdminUnitScope(req.webUser, loadKelas(), loadAdminUnitSettings(), "", { global: true });
+    next();
+  } catch (error) {
+    res.status(error.status || 403).json({ error: error.message });
+  }
+}
+
 function requireWhatsappBotAccess(req, res, next) {
   const bot = whatsapp.statuses().find(
     (status) => status.key === req.params.key && status.role !== "tu"
@@ -1449,6 +1483,15 @@ function requireWhatsappBotAccess(req, res, next) {
   const ownsBot =
     req.webUser?.role === "wali_kelas" &&
     bot.expectedNumber === req.webUser.nomor;
+  if (req.webUser?.role === "admin") {
+    const scope = scopeFor(req.webUser);
+    if (!scope.globalMode && !bot.classes?.includes(scope.activeUnit)) {
+      return res.status(403).json({ error: "Bot ini bukan milik unit yang sedang dipilih." });
+    }
+    if (req.method === "POST" && !scope.globalMode && bot.classes?.some((unit) => unit !== scope.activeUnit)) {
+      return res.status(403).json({ error: "Sesi bot bersama tidak dapat direset dari unit tertentu." });
+    }
+  }
   if (req.webUser?.role !== "admin" && !ownsBot) {
     return res.status(403).json({
       error: "Pengelola unit hanya dapat mengelola sesi WhatsApp miliknya.",
@@ -1459,9 +1502,18 @@ function requireWhatsappBotAccess(req, res, next) {
 }
 
 function requireWebPhotoManager(req, res, next) {
-  if (req.webUser?.role === "admin") return next();
-
   const siswaId = `${normalizeNomor(req.params.number)}@c.us`;
+  if (req.webUser?.role === "admin") {
+    try {
+      const units = loadKelas();
+      assertAdminUnitScope(req.webUser, units, loadAdminUnitSettings(),
+        findKelasSiswa(units, siswaId)?.namaKelas);
+      return next();
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
+
   const kelasWali = kelasUntukWali(loadKelas(), req.webUser?.id);
   if (req.webUser?.role === "wali_kelas" && findKelasSiswa(kelasWali, siswaId)) {
     return next();
