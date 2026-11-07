@@ -19,7 +19,7 @@ const units = {
   TOKO: { waliKelas: managerB, siswa: {} },
 };
 const scoped = () => ({
-  [admin.id]: { mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "GUDANG" },
+  [admin.id]: { mode: "selected", units: ["GUDANG"], activeUnit: "GUDANG" },
 });
 
 test("administrator lama tetap global tanpa policy migrasi", () => {
@@ -32,7 +32,7 @@ test("administrator terbatas hanya melihat unit yang diberikan", () => {
   const scope = adminUnitContext(admin, units, scoped());
   assert.equal(scope.restricted, true);
   assert.equal(scope.activeUnit, "GUDANG");
-  assert.deepEqual(scope.allowedUnits, ["GUDANG", "KANTOR"]);
+  assert.deepEqual(scope.allowedUnits, ["GUDANG"]);
 });
 
 test("akses data unit tidak bisa dilewati hanya dengan mengganti parameter", () => {
@@ -43,12 +43,12 @@ test("akses data unit tidak bisa dilewati hanya dengan mengganti parameter", () 
   assert.throws(() => assertAdminUnitScope(admin, units, settings, "", { global: true }), { status: 403 });
 });
 
-test("pindah unit hanya mengizinkan unit yang ditugaskan", () => {
+test("administrator unit tertentu tidak dapat berpindah ke unit lain", () => {
   const settings = scoped();
-  assert.equal(setActiveAdminUnit(settings, admin.id, units, "KANTOR"), "KANTOR");
-  assert.doesNotThrow(() => assertAdminUnitScope(admin, units, settings, "KANTOR"));
-  assert.throws(() => assertAdminUnitScope(admin, units, settings, "TOKO"), { status: 403 });
+  assert.throws(() => setActiveAdminUnit(settings, admin.id, units, "KANTOR"), { status: 403 });
+  assert.equal(setActiveAdminUnit(settings, admin.id, units, "GUDANG"), "GUDANG");
   assert.throws(() => setActiveAdminUnit(settings, admin.id, units, ""), { status: 403 });
+  assert.deepEqual(settings[admin.id].units, ["GUDANG"]);
 });
 
 test("administrator global dapat kembali ke seluruh unit", () => {
@@ -62,8 +62,14 @@ test("administrator global dapat kembali ke seluruh unit", () => {
 test("cakupan akses admin divalidasi saat menyimpan akun", () => {
   assert.throws(() => adminUnitPolicyInput({ accessMode: "selected", accessUnits: [] }, units), { status: 400 });
   assert.throws(() => adminUnitPolicyInput({ accessMode: "selected", accessUnits: ["LAIN"] }, units), { status: 400 });
-  assert.deepEqual(adminUnitPolicyInput({
+  assert.throws(() => adminUnitPolicyInput({
+    accessMode: "selected", accessUnits: ["GUDANG", "KANTOR"],
+  }, units), { status: 400 });
+  assert.throws(() => adminUnitPolicyInput({
     accessMode: "selected", accessUnits: ["GUDANG", "GUDANG"],
+  }, units), { status: 400 });
+  assert.deepEqual(adminUnitPolicyInput({
+    accessMode: "selected", accessUnits: ["GUDANG"],
   }, units), { mode: "selected", units: ["GUDANG"], activeUnit: "GUDANG" });
 });
 
@@ -71,10 +77,10 @@ test("ganti nama dan hapus unit memperbaiki daftar akses administrator", () => {
   const settings = scoped();
   renameAdminUnitSettings(settings, "GUDANG", "LOGISTIK");
   assert.deepEqual(settings[admin.id], {
-    mode: "selected", units: ["LOGISTIK", "KANTOR"], activeUnit: "LOGISTIK",
+    mode: "selected", units: ["LOGISTIK"], activeUnit: "LOGISTIK",
   });
   renameAdminUnitSettings(settings, "LOGISTIK");
-  assert.deepEqual(settings[admin.id].units, ["KANTOR"]);
+  assert.deepEqual(settings[admin.id].units, []);
   assert.equal(settings[admin.id].activeUnit, "");
 });
 
@@ -128,4 +134,45 @@ test("akun operator bersama hanya boleh diatur dari mode global", () => {
   assert.doesNotThrow(() => assertOperatorManagementAccess(admin, units, {}, {
     role: "wali_kelas", unit: "KANTOR", operatorId: managerB, editing: true,
   }));
+});
+
+test("kebijakan lama beberapa unit dikunci ke satu unit aktif", () => {
+  const legacy = { [admin.id]: { mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "KANTOR" } };
+  const scope = adminUnitContext(admin, units, legacy);
+  assert.deepEqual(scope.allowedUnits, ["KANTOR"]);
+  assert.equal(scope.activeUnit, "KANTOR");
+  assert.throws(() => assertAdminUnitScope(admin, units, legacy, "GUDANG"), { status: 403 });
+  assert.throws(() => setActiveAdminUnit(legacy, admin.id, units, "GUDANG"), { status: 403 });
+  setActiveAdminUnit(legacy, admin.id, units, "KANTOR");
+  assert.deepEqual(legacy[admin.id].units, ["KANTOR"]);
+});
+
+test("kebijakan lama tanpa unit aktif memilih unit pertama yang valid secara deterministik", () => {
+  const legacy = { [admin.id]: { mode: "selected", units: ["LAIN", "GUDANG", "KANTOR"], activeUnit: "" } };
+  const scope = adminUnitContext(admin, units, legacy);
+  assert.deepEqual(scope.allowedUnits, ["GUDANG"]);
+  assert.equal(scope.activeUnit, "GUDANG");
+});
+
+test("hapus unit terpilih tidak otomatis memberikan unit lain dari kebijakan lama", () => {
+  const settings = { [admin.id]: {
+    mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "KANTOR",
+  } };
+  renameAdminUnitSettings(settings, "KANTOR");
+  assert.deepEqual(settings[admin.id].units, []);
+  assert.equal(settings[admin.id].activeUnit, "");
+  const remaining = { GUDANG: units.GUDANG, TOKO: units.TOKO };
+  const scope = adminUnitContext(admin, remaining, settings);
+  assert.deepEqual(scope.allowedUnits, []);
+  assert.throws(() => setActiveAdminUnit(settings, admin.id, remaining, ""), { status: 403 });
+  assert.throws(() => assertAdminUnitScope(admin, remaining, settings, "GUDANG"), { status: 403 });
+});
+
+test("mengubah unit bukan target hanya mempertahankan satu unit efektif", () => {
+  const settings = { [admin.id]: {
+    mode: "selected", units: ["GUDANG", "KANTOR"], activeUnit: "KANTOR",
+  } };
+  renameAdminUnitSettings(settings, "GUDANG", "LOGISTIK");
+  assert.deepEqual(settings[admin.id].units, ["KANTOR"]);
+  assert.equal(settings[admin.id].activeUnit, "KANTOR");
 });
