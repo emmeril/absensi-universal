@@ -33,13 +33,19 @@
       }
       .navbar-primary { flex: 1 1 0; min-width: 0; }
       .navbar-controls { display: flex; align-items: center; flex: 0 0 auto; flex-wrap: nowrap; gap: .5rem; min-width: 0; white-space: nowrap; }
-      .navbar-unit-field { display: block; flex: 0 1 auto; min-width: 0; }
-      .navbar-unit-select { display: block; width: clamp(7.25rem, 27vw, 12.5rem); max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+      .navbar-unit-field { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+      .navbar-unit-select { display: block; width: clamp(8rem, 21vw, 14rem); max-width: 100%; min-width: 0; text-overflow: ellipsis; }
       .navbar-page-heading { flex: 1 1 auto; min-width: 0; }
-      .navbar-user-label { max-width: 10rem; min-width: 0; }
-      @media (max-width: 479px) {
+      .navbar-user-label { display: none; max-width: 10rem; min-width: 0; }
+      @media (max-width: 767px) {
+        .navbar-primary { flex: 0 0 auto; }
         .navbar-page-heading { display: none; }
-        .navbar-unit-select { width: clamp(7.25rem, calc(100vw - 12rem), 9.5rem); }
+        .navbar-controls { flex: 1 1 auto; justify-content: flex-end; }
+        .navbar-unit-field { flex: 0 1 15rem; }
+        .navbar-unit-select { width: 100%; }
+      }
+      @media (min-width: 1280px) {
+        .navbar-user-label { display: block; }
       }
       @media (min-width: 1024px) {
         .admin-content { margin-left: 256px; transition: margin-left .25s ease; }
@@ -98,15 +104,15 @@
       <header class="sticky top-0 z-20 flex h-16 min-w-0 flex-nowrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 shadow-sm sm:gap-4 sm:px-7">
         <div class="navbar-primary flex min-w-0 items-center gap-2 sm:gap-4"><button type="button" @click="toggleSidebar()" aria-label="Buka atau tutup menu navigasi" title="Menu navigasi" class="grid h-11 w-11 shrink-0 place-items-center rounded border border-slate-300 text-slate-600 hover:bg-slate-100"><i class="fa-solid fa-bars"></i></button><div class="navbar-page-heading min-w-0"><h1 class="truncate text-sm font-bold text-slate-800 sm:text-base" x-text="currentTab.label"></h1><p class="hidden truncate text-xs text-slate-400 sm:block"><span x-text="brand.name"></span> / <span x-text="currentTab.label"></span></p></div></div>
         <div class="navbar-controls">
-          <label x-show="user?.role === 'admin'" class="navbar-unit-field text-xs font-bold text-slate-600">
-            <span class="sr-only">Unit aktif</span>
+          <div x-show="user?.role === 'admin'" class="navbar-unit-field">
             <select :value="data.adminUnitScope?.activeUnit || ''" @change="selectActiveUnit($event)"
               :disabled="unitSwitching || loading" aria-label="Pilih unit aktif"
+              :title="data.adminUnitScope?.activeUnit || 'Semua unit'"
               class="navbar-unit-select min-h-11 rounded border border-slate-400 bg-white px-2 text-sm text-slate-800">
               <template x-if="!data.adminUnitScope?.restricted"><option value="">Semua unit</option></template>
               <template x-for="name in data.availableUnits || []" :key="name"><option :value="name" x-text="name"></option></template>
             </select>
-          </label>
+          </div>
           <div class="relative shrink-0" @keydown.escape.window="userMenuOpen=false">
           <button type="button" @click="userMenuOpen=!userMenuOpen" aria-label="Buka menu akun" aria-haspopup="true" :aria-expanded="userMenuOpen" class="flex min-h-11 shrink-0 flex-nowrap items-center gap-2 whitespace-nowrap rounded-lg px-2 py-1.5 text-right transition hover:bg-slate-100"><span class="navbar-user-label hidden min-w-0 xl:block"><strong class="block truncate text-sm text-slate-700" x-text="user?.nama"></strong><small class="block truncate text-slate-500" x-text="roleLabel(user?.role)"></small></span><span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-[#3c8dbc]"><i class="fa-solid fa-user"></i></span><i class="fa-solid fa-chevron-down shrink-0 text-xs text-slate-400 transition-transform" :class="userMenuOpen ? 'rotate-180' : ''"></i></button>
           <div x-show="userMenuOpen" x-cloak x-transition.origin.top.right @click.outside="userMenuOpen=false" class="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-lg border border-slate-200 bg-white text-left shadow-xl"><div class="flex items-center gap-3 bg-slate-50 p-4"><span class="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#3c8dbc] text-lg text-white"><i class="fa-solid fa-user"></i></span><div class="min-w-0"><strong class="block truncate text-sm text-slate-800" x-text="user?.nama"></strong><span class="mt-1 inline-block rounded bg-blue-50 px-2 py-1 text-xs text-blue-700" x-text="roleLabel(user?.role)"></span></div></div><div class="space-y-3 p-4 text-sm"><div><p class="text-xs text-slate-400">Username</p><p class="mt-1 truncate font-bold text-slate-700" x-text="user?.username || '-'"></p></div><div><p class="text-xs text-slate-400">Nomor WhatsApp</p><p class="mt-1 font-bold text-slate-700" x-text="user?.nomor || '-'"></p></div></div><div class="border-t border-slate-200 p-2"><button type="button" @click="logout()" class="flex w-full items-center gap-2 rounded px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-50"><i class="fa-solid fa-right-from-bracket"></i>Keluar</button></div></div>
