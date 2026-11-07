@@ -811,16 +811,18 @@ function requestedAdminNotificationPreference(body, kelas) {
   }
 
   if (mode !== "selected") return { mode, units: [] };
-  const requestedUnits = Array.isArray(body.notificationUnits)
-    ? body.notificationUnits.map((unit) => String(unit || "").trim().toUpperCase())
-    : [];
-  const units = [...new Set(requestedUnits)].filter(Boolean);
-  if (!units.length || units.some((unit) => !kelas[unit])) {
-    const error = new Error("Pilih minimal satu Unit yang tersedia untuk notifikasi.");
+  if (!Array.isArray(body.notificationUnits) || body.notificationUnits.length !== 1) {
+    const error = new Error("Pilih tepat satu unit untuk Notifikasi Absensi.");
     error.code = "NOTIFICATION_PREFERENCE";
     throw error;
   }
-  return { mode, units };
+  const unit = String(body.notificationUnits[0] || "").trim().toUpperCase();
+  if (!unit || !Object.hasOwn(kelas, unit)) {
+    const error = new Error("Unit untuk notifikasi tidak tersedia.");
+    error.code = "NOTIFICATION_PREFERENCE";
+    throw error;
+  }
+  return { mode, units: [unit] };
 }
 
 function assertAdminNotificationPolicy(roles, preferences, kelas) {
@@ -2196,10 +2198,19 @@ app.post("/api/admins", requireWebAdmin, async (req, res) => {
         delete draft[ADMIN_UNITS_PATH][id];
       }
       if (role === "admin") {
-        draft[ADMIN_NOTIFICATIONS_PATH][id] = requestedAdminNotificationPreference(
-          req.body,
-          draft[KELAS_PATH]
-        );
+        const scope = adminUnitContext({ id, role }, draft[KELAS_PATH], draft[ADMIN_UNITS_PATH]);
+        const preference = requestedAdminNotificationPreference(req.body, draft[KELAS_PATH]);
+        if (scope.restricted && preference.mode === "all") {
+          preference.mode = "selected";
+          preference.units = scope.allowedUnits;
+        }
+        if (scope.restricted && preference.mode === "selected" &&
+            (preference.units.length !== 1 || preference.units[0] !== scope.activeUnit)) {
+          const error = new Error("Notifikasi Administrator unit tertentu harus mengikuti unit yang ditetapkan.");
+          error.code = "NOTIFICATION_PREFERENCE";
+          throw error;
+        }
+        draft[ADMIN_NOTIFICATIONS_PATH][id] = preference;
       } else {
         delete draft[ADMIN_NOTIFICATIONS_PATH][id];
       }
@@ -2315,19 +2326,9 @@ app.post("/api/classes", requireWebAdmin, async (req, res) => {
         assertAdminUnitScope(req.webUser, kelas, draft[ADMIN_UNITS_PATH], "", { global: true });
       }
       kelas[nama] ||= { siswa: {}, waliKelas: "", namaWali: "" };
-      if (!originalNama) {
-        const actorPreference = adminNotificationPreference(
-          req.webUser.id,
-          draft[ADMIN_NOTIFICATIONS_PATH],
-          kelas
-        );
-        if (!receivesUnit(actorPreference, nama)) {
-          draft[ADMIN_NOTIFICATIONS_PATH][req.webUser.id] = {
-            mode: "selected",
-            units: [...new Set([...actorPreference.units, nama])],
-          };
-        }
-      }
+      // A new unit must already have a notification recipient (for example,
+      // an Administrator with mode "all"). Never silently append another unit
+      // to an Administrator's single-unit notification preference.
       assertAdminNotificationPolicy(
         draft[ROLE_PATH],
         draft[ADMIN_NOTIFICATIONS_PATH],
