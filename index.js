@@ -89,6 +89,7 @@ const {
 } = require("./lib/admin-notifications");
 const { toUniversalTerms } = require("./public/universal-copy");
 const { unitBotKey } = require("./lib/unit-bot");
+const { DEFAULT_SCHEDULE, resolveUnitSchedule, assertScheduleAccess } = require("./lib/unit-schedule");
 const app = express();
 const PORT = Number(process.env.PORT) || 3200;
 const HOST = String(process.env.HOST || "127.0.0.1");
@@ -234,15 +235,7 @@ const JSON_STORES = {
   },
   [JAM_PATH]: {
     path: JAM_PATH,
-    fallback: {
-      masuk: "09:00:00",
-      pulang: "16:00:00",
-      toleransi: 0,
-      mulaiMasuk: "00:00:00",
-      selesaiMasuk: "23:59:59",
-      mulaiPulang: "00:00:00",
-      selesaiPulang: "23:59:59",
-    },
+    fallback: DEFAULT_SCHEDULE,
   },
   [IZIN_PATH]: { path: IZIN_PATH, fallback: {} },
   [KELAS_PATH]: { path: KELAS_PATH, fallback: {} },
@@ -1027,15 +1020,7 @@ async function catatAbsensiKamera(userId, tipe, lokasi, foto, botKey) {
     await jsonState.exclusive(async () => {
       const kontak = loadJSON(KONTAK_PATH);
       const kelasSiswa = findKelasSiswa(loadKelas(), userId);
-      const jamResmi = loadJSON(JAM_PATH, {
-        masuk: "09:00:00",
-        pulang: "16:00:00",
-        toleransi: 0,
-        mulaiMasuk: "00:00:00",
-        selesaiMasuk: "23:59:59",
-        mulaiPulang: "00:00:00",
-        selesaiPulang: "23:59:59",
-      });
+      const jamResmi = resolveUnitSchedule(loadJSON(JAM_PATH), kelasSiswa);
       const lokasiKantor = loadJSON(LOKASI_PATH, {
         latitude: -6.7329,
         longitude: 108.5522,
@@ -1223,15 +1208,6 @@ whatsapp.on("message", safeAsyncListener(async ({
   const body = String(msg.body || "").trim().toLowerCase();
   const kontak = loadJSON(KONTAK_PATH);
   const roles = loadJSON(ROLE_PATH);
-  const jamResmi = loadJSON(JAM_PATH, {
-    masuk: "09:00:00",
-    pulang: "16:00:00",
-    toleransi: 0,
-    mulaiMasuk: "00:00:00",
-    selesaiMasuk: "23:59:59",
-    mulaiPulang: "00:00:00",
-    selesaiPulang: "23:59:59",
-  });
   const waktu = getWaktu();
   const role = roles[sender] || "user";
   const terdaftar = Boolean(kontak[sender]);
@@ -1272,6 +1248,7 @@ whatsapp.on("message", safeAsyncListener(async ({
   }
 
   const kelasSiswa = findKelasSiswa(loadKelas(), sender);
+  const jamResmi = resolveUnitSchedule(loadJSON(JAM_PATH), kelasSiswa);
   const beradaDiBotWali =
     terdaftar &&
     kelasSiswa?.waliKelas === `${expectedNumber}@c.us` &&
@@ -1799,15 +1776,7 @@ async function dashboardData(user) {
   const roles = loadRoles();
   const accounts = loadDashboardAccounts();
   const adminNotificationPreferences = loadAdminNotificationPreferences();
-  const jam = loadJSON(JAM_PATH, {
-    masuk: "07:00:00",
-    pulang: "14:00:00",
-    toleransi: 0,
-    mulaiMasuk: "00:00:00",
-    selesaiMasuk: "23:59:59",
-    mulaiPulang: "00:00:00",
-    selesaiPulang: "23:59:59",
-  });
+  const jam = resolveUnitSchedule(loadJSON(JAM_PATH));
   const today = getWaktu().tanggal;
   const absensiHariIni = await attendanceForDate(today);
   const izinHariIni = loadJSONSelected(IZIN_PATH, (permissions) => permissions[today] || {});
@@ -1851,6 +1820,7 @@ async function dashboardData(user) {
       namaWali: data.namaWali || "",
       username: dashboardAccountForUser(accounts, data.waliKelas)?.username || "",
       jumlahSiswa: Object.keys(data.siswa || {}).length,
+      jadwal: data.jadwal ? resolveUnitSchedule(jam, data) : null,
     })),
     admins: user.role === "admin" ? Object.entries(roles)
       .filter(([, role]) => ["admin", "wali_kelas"].includes(role))
@@ -2388,7 +2358,14 @@ app.delete("/api/settings/brand/logo", requireWebAdmin, async (_req, res) => {
   res.json({ ok: true, brand: publicBrandSettings() });
 });
 
-app.post("/api/settings/time", requireWebAdmin, async (req, res) => {
+app.post("/api/settings/time", async (req, res) => {
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+    return res.status(400).json({ error: "Data jadwal belum lengkap." });
+  }
+  if (req.body.unit != null && typeof req.body.unit !== "string") {
+    return res.status(400).json({ error: "Pilih unit yang valid." });
+  }
+  const unit = String(req.body.unit || "").trim().toUpperCase();
   const masuk = String(req.body.masuk || "");
   const pulang = String(req.body.pulang || "");
   const toleransi = Number(req.body.toleransi);
@@ -2413,7 +2390,7 @@ app.post("/api/settings/time", requireWebAdmin, async (req, res) => {
       error: "Jam harus berformat HH:MM, jam selesai harus setelah jam mulai, dan toleransi harus 0-180 menit.",
     });
   }
-  await saveJSON(JAM_PATH, {
+  const schedule = {
     masuk: `${masuk}:00`,
     pulang: `${pulang}:00`,
     toleransi,
@@ -2421,7 +2398,34 @@ app.post("/api/settings/time", requireWebAdmin, async (req, res) => {
     selesaiMasuk: `${selesaiMasuk}:00`,
     mulaiPulang: `${mulaiPulang}:00`,
     selesaiPulang: `${selesaiPulang}:00`,
-  });
+  };
+  try {
+    await updateJSON([JAM_PATH, KELAS_PATH], (draft) => {
+      assertScheduleAccess(req.webUser, draft[KELAS_PATH], unit);
+      if (unit) draft[KELAS_PATH][unit].jadwal = schedule;
+      else draft[JAM_PATH] = { ...draft[JAM_PATH], ...schedule };
+    });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
+  res.json({ ok: true, unit });
+});
+
+app.delete("/api/settings/time", async (req, res) => {
+  if (typeof req.query.unit !== "string" || !req.query.unit.trim()) {
+    return res.status(400).json({ error: "Pilih unit yang akan memakai jadwal organisasi." });
+  }
+  const unit = req.query.unit.trim().toUpperCase();
+  try {
+    await updateJSON(KELAS_PATH, (draft) => {
+      assertScheduleAccess(req.webUser, draft[KELAS_PATH], unit);
+      delete draft[KELAS_PATH][unit].jadwal;
+    });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    throw error;
+  }
   res.json({ ok: true });
 });
 
