@@ -74,6 +74,17 @@ test("petunjuk pengaturan lokasi mengikuti unit aktif dan role", () => {
   assert.doesNotMatch(dashboardPage, /Administrator dapat mengatur lokasi tiap unit dengan mengirim/);
 });
 
+test("aksi pengelolaan unit hanya terlihat pada Administrator global", () => {
+  assert.match(dashboardPage, /get canManageUnits\(\)\{return this\.user\?\.role==="admin" && this\.data\.adminUnitScope\?\.globalMode === true;/);
+  assert.match(dashboardPage, /x-show="canManageUnits" x-cloak @click="openModal\('class'\)"/);
+  assert.match(dashboardPage, /<th x-show="canManageUnits" x-cloak class="text-center">Aksi<\/th>/);
+  assert.match(dashboardPage, /<td x-show="canManageUnits" x-cloak><div class="flex justify-center gap-1"><button @click="editClass\(k\)"/);
+  assert.match(dashboardPage, /:colspan="canManageUnits \? 5 : 4"/);
+  assert.match(dashboardPage, /openModal\(type\)\{if\(type==="class"&&!this\.canManageUnits\)return;/);
+  assert.match(dashboardPage, /removeClass\(k\)\{if\(!this\.canManageUnits\)return;/);
+  assert.match(server, /app\.delete\("\/api\/classes\/:name", requireWebAdmin, requireWebGlobalAdmin/);
+});
+
 test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /label:"Absen Anggota"/);
   assert.doesNotMatch(dashboardPage, /teacherMenuOpen/);
