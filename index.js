@@ -2079,7 +2079,9 @@ async function dashboardData(user) {
           notificationMode: notificationPreference.mode,
           notificationUnits: notificationPreference.units,
           accessMode: loadAdminUnitSettings()[id]?.mode || "all",
-          accessUnits: loadAdminUnitSettings()[id]?.units || [],
+          accessUnits: loadAdminUnitSettings()[id]?.mode === "selected"
+            ? adminUnitContext({ id, role: "admin" }, semuaKelas, loadAdminUnitSettings()).allowedUnits
+            : [],
         };
       }) : [],
     selfNotificationCanDisable: user.role === "admin" && !notificationPolicyError({
