@@ -131,9 +131,11 @@ test("reset memakai acuan terbaru dan jadwal khusus mengikuti ganti nama serta h
   assert.equal((await call("manager", "DELETE", "/api/settings/time?unit=A")).status, 200);
   assert.equal(resolveUnitSchedule(state.read("time"), state.read("units").A).masuk, "10:00:00");
   await call("manager", "POST", undefined, { ...input, unit: "A" });
+  await state.update("units", (draft) => { draft.units.A.lokasi = { latitude: -6.2, longitude: 106.8 }; });
   assert.equal((await call("admin", "POST", "/api/classes", { originalNama: "A", nama: "C" })).status, 200);
   assert.equal(state.read("units").A, undefined);
   assert.equal(state.read("units").C.jadwal.masuk, "08:00:00");
+  assert.deepEqual(state.read("units").C.lokasi, { latitude: -6.2, longitude: 106.8 });
   assert.equal((await call("admin", "DELETE", "/api/classes/C")).status, 200);
   assert.equal(state.read("units").C, undefined);
 });

@@ -282,7 +282,7 @@ function automaticFlowFixture() {
   const outbox = [];
   const attendanceKey = (record) => `${record.tanggal}:${record.siswaId}:${record.tipe}`;
   const context = {
-    ...require("../lib/attendance-rules"), ...require("../lib/unit-schedule"), crypto, Buffer,
+    ...require("../lib/attendance-rules"), ...require("../lib/unit-schedule"), ...require("../lib/unit-location"), crypto, Buffer,
     STORAGE_PATH: "storage", IZIN_PATH: "permissions", KONTAK_PATH: "contacts",
     JAM_PATH: "time", LOKASI_PATH: "location", IZIN_BUKTI_DIR: "evidence",
     ATTENDANCE_PHOTO_DIR: "attendance",
@@ -395,6 +395,31 @@ test("kamera memakai rentang, toleransi, dan status pulang unit saat pencatatan"
     } else {
       await assert.rejects(record, /hanya dapat dilakukan pukul/);
       assert.equal(attendanceRecords.size, 0);
+    }
+  }
+});
+
+test("GPS masuk dan pulang diperiksa terhadap titik unit masing-masing", async () => {
+  const points = {
+    A: { latitude: -6.2, longitude: 106.8 },
+    B: { latitude: -6.9, longitude: 107.6 },
+  };
+  for (const tipe of ["masuk", "pulang"]) {
+    for (const unit of ["A", "B"]) {
+      for (const atUnit of ["A", "B"]) {
+        const { context, attendanceRecords } = automaticFlowFixture();
+        context.haversine = require("haversine-distance");
+        context.findKelasSiswa = () => ({ namaKelas: unit, lokasi: points[unit] });
+        const foto = { mimetype: "image/jpeg", buffer: Buffer.from("test") };
+        const result = context.catatAbsensiKamera("student", tipe, points[atUnit], foto);
+        if (unit === atUnit) {
+          await result;
+          assert.equal(attendanceRecords.size, 1);
+        } else {
+          await assert.rejects(result, /di luar area kegiatan/);
+          assert.equal(attendanceRecords.size, 0);
+        }
+      }
     }
   }
 });
