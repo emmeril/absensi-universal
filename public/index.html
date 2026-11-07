@@ -298,7 +298,7 @@
           timeUnit: "", timeFormUnit: "", timeSaving: false, timeError: "", dashboardError: "", unitSwitching: false,
           get selectedTimeUnit(){return this.data.kelas.find(unit=>unit.nama===this.timeUnit);},
           get canEditTime(){return (this.user?.role==="admin"
-             ? (Boolean(this.timeUnit) || Boolean(this.data.adminUnitScope?.globalMode))
+             ? (!this.data.adminUnitScope || Boolean(this.timeUnit) || Boolean(this.data.adminUnitScope.globalMode))
              : Boolean(this.selectedTimeUnit));},
           get timeSummary(){const jam=this.selectedTimeUnit?.jadwal||this.data.jam||{};return {masuk:(jam.masuk||"09:00").slice(0,5),pulang:(jam.pulang||"16:00").slice(0,5),toleransi:Number(jam.toleransi)||0,mulaiMasuk:(jam.mulaiMasuk||"00:00").slice(0,5),selesaiMasuk:(jam.selesaiMasuk||"23:59").slice(0,5),mulaiPulang:(jam.mulaiPulang||"00:00").slice(0,5),selesaiPulang:(jam.selesaiPulang||"23:59").slice(0,5)};},
           get cards() { const hadir=this.data.siswa.filter(s=>s.masuk).length, izin=this.data.siswa.filter(s=>s.izin).length; return [{label:"Total anggota",value:this.data.siswa.length,icon:"fa-solid fa-users",color:"#3c8dbc"},{label:"Hadir hari ini",value:hadir,icon:"fa-solid fa-circle-check",color:"#00a65a"},{label:"Belum hadir",value:Math.max(0,this.data.siswa.length-hadir-izin),icon:"fa-solid fa-clock",color:"#f39c12"},{label:"Izin",value:izin,icon:"fa-solid fa-file-circle-check",color:"#dd4b39"}]; },
