@@ -180,3 +180,34 @@ test("operator account shared by multiple units cannot be modified by local admi
   assert.equal(remove.status, 403);
   assert.equal(f.state.roles[sharedOperator], "wali_kelas");
 });
+
+test("unit admin can edit existing bot operator account within active unit", async () => {
+  const f = makeFixture();
+  const number = "6289000000055";
+  assert.equal((await f.call(actor, "POST", "/api/admins", operatorForm(number, unitA))).status, 201);
+  const edited = await f.call(actor, "POST", "/api/admins", {
+    ...operatorForm(number, unitA),
+    originalNomor: number,
+    username: "operator.alfa",
+    nama: "Operator Alfa Baru",
+    password: "",
+  });
+  assert.equal(edited.status, 200);
+  assert.equal(f.state.names[number + "@c.us"], "Operator Alfa Baru");
+  assert.equal(f.state.accounts["operator.alfa"].userId, number + "@c.us");
+  assert.equal(f.state.units[unitA].waliKelas, number + "@c.us");
+});
+
+test("global administrator retains control over administrator accounts", async () => {
+  const f = makeFixture();
+  const number = "6289000000056";
+  const added = await f.call(owner, "POST", "/api/admins", {
+    ...operatorForm(number, unitA),
+    role: "admin",
+    accessMode: "all",
+    notificationMode: "all",
+  });
+  assert.equal(added.status, 201);
+  assert.equal(f.state.roles[number + "@c.us"], "admin");
+  assert.equal(f.state.adminUnits[number + "@c.us"].mode, "all");
+});
