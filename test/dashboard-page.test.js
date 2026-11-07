@@ -66,6 +66,14 @@ test("Administrator dapat mengatur cakupan notifikasi per Unit", () => {
   assert.match(server, /assertAdminNotificationPolicy/);
 });
 
+test("petunjuk pengaturan lokasi mengikuti unit aktif dan role", () => {
+  assert.match(dashboardPage, /Cara mengubah lokasi absensi/);
+  assert.match(dashboardPage, /data\.adminUnitScope\?\.activeUnit/);
+  assert.match(dashboardPage, /Kirim lokasi Anda saat ini/);
+  assert.match(dashboardPage, /Titik lokasi absensi diatur oleh Administrator/);
+  assert.doesNotMatch(dashboardPage, /Administrator dapat mengatur lokasi tiap unit dengan mengirim/);
+});
+
 test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /label:"Absen Anggota"/);
   assert.doesNotMatch(dashboardPage, /teacherMenuOpen/);
