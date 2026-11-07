@@ -85,6 +85,19 @@ test("aksi pengelolaan unit hanya terlihat pada Administrator global", () => {
   assert.match(server, /app\.delete\("\/api\/classes\/:name", requireWebAdmin, requireWebGlobalAdmin/);
 });
 
+test("Manajemen Pengguna tetap tersedia untuk Administrator unit tertentu", () => {
+  assert.match(dashboardPage, /item\.id!=="brand"/);
+  assert.match(dashboardPage, /get canManageAllUsers\(\)/);
+  assert.match(dashboardPage, /Kelola akun Operator Bot pada unit aktif saja/);
+  assert.match(dashboardPage, /<template x-if="canManageAllUsers"><option value="admin">Administrator<\/option><\/template>/);
+  assert.match(dashboardPage, /:disabled="!canManageAllUsers" :required="adminForm\.role==='wali_kelas'"/);
+  assert.match(dashboardPage, /role:this\.canManageAllUsers\?"admin":"wali_kelas"/);
+  assert.match(dashboardPage, /className:this\.canManageAllUsers\?"":this\.data\.adminUnitScope\?\.activeUnit\|\|""/);
+  assert.match(server, /assertOperatorManagementAccess\(req\.webUser, draft\[KELAS_PATH\], draft\[ADMIN_UNITS_PATH\]/);
+  assert.match(server, /operatorUnitsForUser\(semuaKelas, id\)/);
+  assert.doesNotMatch(server, /app\.post\("\/api\/admins", requireWebAdmin, requireWebGlobalAdmin/);
+});
+
 test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /label:"Absen Anggota"/);
   assert.doesNotMatch(dashboardPage, /teacherMenuOpen/);
