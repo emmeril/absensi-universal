@@ -76,10 +76,10 @@ function fixture({ restricted = true } = {}) {
         error.code = "NOTIFICATION_PREFERENCE";
         throw error;
       }
-      const allowed = [...new Set(body.notificationUnits || [])];
+      const allowed = Array.isArray(body.notificationUnits) ? body.notificationUnits : [];
       if (body.notificationMode === "selected" &&
-          (!allowed.length || allowed.some((unit) => !Object.hasOwn(units, unit)))) {
-        const error = Error("Pilih unit notifikasi yang valid.");
+          (allowed.length !== 1 || !Object.hasOwn(units, allowed[0]))) {
+        const error = Error("Pilih tepat satu unit notifikasi.");
         error.code = "NOTIFICATION_PREFERENCE";
         throw error;
       }
@@ -200,4 +200,13 @@ test("pengaturan notifikasi harus menyisakan penerima setiap unit", async () => 
   const disabled = await f.post({ ...baseForm(), notificationMode: "none" });
   assert.equal(disabled.status, 400);
   assert.equal(f.state.notifications[id].mode, "selected");
+});
+
+test("akun sendiri menolak dua atau lebih unit notifikasi", async () => {
+  const f = fixture({ restricted: false });
+  const result = await f.post({
+    ...baseForm(), notificationUnits: ["GUDANG", "KANTOR"],
+  });
+  assert.equal(result.status, 400);
+  assert.deepEqual(f.state.notifications[id], { mode: "selected", units: ["GUDANG"] });
 });
