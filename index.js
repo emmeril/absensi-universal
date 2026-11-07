@@ -2132,7 +2132,7 @@ app.delete("/api/admins/:number", requireWebAdmin, requireWebGlobalAdmin, async 
       }
     });
   } catch (error) {
-    if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
+    if (error.code === "NOTIFICATION_POLICY" || error.code === "ADMIN_UNIT_SCOPE") return res.status(400).json({ error: error.message });
     throw error;
   }
   if (!found) return res.status(404).json({ error: "Pengguna tidak ditemukan." });
