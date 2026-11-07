@@ -1939,6 +1939,10 @@ app.post("/api/admin/me", requireWebAdmin, selfAccountLimiter, async (req, res) 
       }
       const scope = adminUnitContext(req.webUser, draft[KELAS_PATH], draft[ADMIN_UNITS_PATH]);
       const preference = requestedAdminNotificationPreference(body, draft[KELAS_PATH]);
+      if (scope.restricted && preference.mode === "all") {
+        preference.mode = "selected";
+        preference.units = scope.allowedUnits;
+      }
       if (preference.mode === "selected" &&
           preference.units.some((unit) => !scope.allowedUnits.includes(unit))) {
         throw scopeError("Anda hanya dapat memilih notifikasi untuk unit yang diizinkan.");
