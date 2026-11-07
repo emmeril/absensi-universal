@@ -24,6 +24,16 @@ Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu,
 - Branding nama aplikasi dan logo.
 - Penyimpanan SQLite serta antrean notifikasi persisten.
 
+## Pemilihan unit aktif Administrator
+
+Satu instalasi dapat melayani beberapa unit dengan jadwal, titik GPS, dan bot WhatsApp anggota masing-masing. Administrator memilih **Unit aktif** pada header dashboard. Selama satu unit dipilih, anggota, laporan, izin, jadwal, serta daftar bot dashboard dibatasi pada unit itu. **Semua unit** menampilkan seluruh data dan memberikan akses pengaturan pusat.
+
+Pada **Manajemen Pengguna**, Administrator global dapat memberikan hak **Seluruh unit** atau **Unit tertentu** untuk setiap akun Administrator. Administrator terbatas hanya bisa memilih unit yang diberikan kepadanya dan tidak dapat mengelola akun atau brand global. Perubahan cakupan dijalankan di server, bukan hanya filter antarmuka. Sesi login yang sudah terbuka juga mengikuti perubahan hak tersebut. Minimal satu Administrator harus tetap memiliki hak Seluruh unit.
+
+Perintah `!lokasi` tetap dikirim melalui nomor bot unit yang dituju. Saat Administrator memilih unit di dashboard, hanya bot unit aktif yang boleh menerima perintah lokasi darinya. Lokasi ditetapkan setelah pesan lokasi WhatsApp diterima dan pemeriksaan hak akses berhasil kembali. Jika bot melayani beberapa unit, mode Semua unit tetap meminta `!lokasi NAMA UNIT` untuk memastikan tujuan, sementara pilihan unit aktif menentukan target secara otomatis.
+
+**Batasan multi-organisasi:** fitur ini memisahkan pengelolaan berdasarkan unit. Identitas WhatsApp anggota, pengaturan brand, jadwal organisasi sebagai acuan, dan penyimpanan tetap berada dalam satu instalasi. Ini belum menjadi isolasi tenant penuh untuk beberapa perusahaan yang memerlukan namespace anggota, identitas perusahaan, dan kebijakan data terpisah.
+
 ## Peran dashboard
 
 | Peran | Fungsi |
