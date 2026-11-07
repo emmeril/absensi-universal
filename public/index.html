@@ -295,7 +295,7 @@
             <legend class="px-1 text-sm font-bold">Notifikasi WhatsApp</legend>
             <label class="block text-sm">Penerimaan notifikasi
               <select x-model="selfForm.notificationMode" class="mt-1 w-full rounded border border-slate-400 px-3 py-2.5">
-                <option value="all" x-show="!data.adminUnitScope?.restricted">Semua unit</option>
+                <template x-if="!data.adminUnitScope?.restricted"><option value="all">Semua unit</option></template>
                 <option value="selected">Unit yang dipilih</option>
                 <option value="none" :disabled="!data.selfNotificationCanDisable">Tidak menerima</option>
               </select>
