@@ -93,6 +93,7 @@ const { DEFAULT_SCHEDULE, resolveUnitSchedule, assertScheduleAccess } = require(
 const { resolveUnitLocation, resolveLocationUnit } = require("./lib/unit-location");
 const {
   adminUnitContext, adminUnitPolicyInput, assertAdminUnitScope,
+  assertOperatorManagementAccess, operatorUnitsForUser,
   renameAdminUnitSettings, setActiveAdminUnit, scopeError, unitName,
 } = require("./lib/admin-unit-scope");
 const app = express();
@@ -1948,8 +1949,13 @@ async function dashboardData(user) {
       jumlahSiswa: Object.keys(data.siswa || {}).length,
       jadwal: data.jadwal ? resolveUnitSchedule(jam, data) : null,
     })),
-    admins: user.role === "admin" && adminScope.globalMode ? Object.entries(roles)
-      .filter(([, role]) => ["admin", "wali_kelas"].includes(role))
+    admins: user.role === "admin" ? Object.entries(roles)
+      .filter(([id, role]) => {
+        if (adminScope.globalMode) return ["admin", "wali_kelas"].includes(role);
+        if (role !== "wali_kelas" || !adminScope.activeUnit) return false;
+        const assigned = operatorUnitsForUser(semuaKelas, id);
+        return assigned.length === 1 && assigned[0] === adminScope.activeUnit;
+      })
       .map(([id, role]) => {
         const notificationPreference = role === "admin"
           ? adminNotificationPreference(id, adminNotificationPreferences, semuaKelas)
@@ -1981,7 +1987,7 @@ app.get("/api/dashboard", async (req, res) => {
   res.json(await dashboardData(req.webUser));
 });
 
-app.post("/api/admins", requireWebAdmin, requireWebGlobalAdmin, async (req, res) => {
+app.post("/api/admins", requireWebAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.body.nomor);
   const originalNomor = normalizeNomor(req.body.originalNomor);
   const nama = toTitleCase(String(req.body.nama || "").trim());
@@ -2037,6 +2043,9 @@ app.post("/api/admins", requireWebAdmin, requireWebGlobalAdmin, async (req, res)
         error.code = "ROLE_CHANGE";
         throw error;
       }
+      assertOperatorManagementAccess(req.webUser, draft[KELAS_PATH], draft[ADMIN_UNITS_PATH], {
+        role, unit: className, operatorId: id, editing,
+      });
       if (role === "wali_kelas") {
         const assignedClass = draft[KELAS_PATH][className];
         if (!className || !assignedClass) {
@@ -2093,7 +2102,8 @@ app.post("/api/admins", requireWebAdmin, requireWebGlobalAdmin, async (req, res)
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
-    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE", "NOTIFICATION_PREFERENCE", "NOTIFICATION_POLICY", "ADMIN_UNIT_SCOPE"].includes(error.code)) return res.status(400).json({ error: error.message });
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
+    if (["ROLE_CHANGE", "CLASS_REQUIRED", "CLASS_ASSIGNED", "NUMBER_UNAVAILABLE", "NOTIFICATION_PREFERENCE", "NOTIFICATION_POLICY"].includes(error.code)) return res.status(400).json({ error: error.message });
     throw error;
   }
   if (id === req.webUser.id) req.webUser.username = username;
@@ -2101,7 +2111,7 @@ app.post("/api/admins", requireWebAdmin, requireWebGlobalAdmin, async (req, res)
   res.status(editing ? 200 : 201).json({ ok: true, nomor, nama, username, role, className });
 });
 
-app.delete("/api/admins/:number", requireWebAdmin, requireWebGlobalAdmin, async (req, res) => {
+app.delete("/api/admins/:number", requireWebAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.params.number);
   if (!/^62\d{8,14}$/.test(nomor)) {
     return res.status(400).json({ error: "Nomor WhatsApp admin belum valid." });
@@ -2116,6 +2126,10 @@ app.delete("/api/admins/:number", requireWebAdmin, requireWebGlobalAdmin, async 
   try {
     await updateJSON([ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH, KELAS_PATH, ADMIN_NOTIFICATIONS_PATH, ADMIN_UNITS_PATH], (draft) => {
       if (["admin", "wali_kelas"].includes(draft[ROLE_PATH][id])) {
+        const assignments = operatorUnitsForUser(draft[KELAS_PATH], id);
+        assertOperatorManagementAccess(req.webUser, draft[KELAS_PATH], draft[ADMIN_UNITS_PATH], {
+          role: draft[ROLE_PATH][id], unit: assignments[0], operatorId: id, editing: true,
+        });
         found = true;
         for (const data of Object.values(draft[KELAS_PATH])) if (data.waliKelas === id) { data.waliKelas = ""; data.namaWali = ""; }
         delete draft[ROLE_PATH][id];
@@ -2132,7 +2146,8 @@ app.delete("/api/admins/:number", requireWebAdmin, requireWebGlobalAdmin, async 
       }
     });
   } catch (error) {
-    if (error.code === "NOTIFICATION_POLICY" || error.code === "ADMIN_UNIT_SCOPE") return res.status(400).json({ error: error.message });
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
+    if (error.code === "NOTIFICATION_POLICY") return res.status(400).json({ error: error.message });
     throw error;
   }
   if (!found) return res.status(404).json({ error: "Pengguna tidak ditemukan." });

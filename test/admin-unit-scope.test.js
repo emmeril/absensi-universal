@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   adminUnitContext,
+  assertOperatorManagementAccess,
   adminUnitPolicyInput,
   assertAdminUnitScope,
   renameAdminUnitSettings,
@@ -87,4 +88,44 @@ test("perintah lokasi dibatasi ke bot unit aktif", () => {
   assert.throws(() => resolveLocationUnit(units, {
     botKey: "wali:628222222222", role: "admin", selectedUnit: "KANTOR", name: "TOKO",
   }), /Pilih unit yang sesuai/);
+});
+
+test("Administrator unit aktif dapat mengelola Operator Bot unit sendiri", () => {
+  const settings = scoped();
+  assert.doesNotThrow(() => assertOperatorManagementAccess(admin, units, settings, {
+    role: "wali_kelas", unit: "GUDANG", operatorId: "628300000000@c.us",
+  }));
+  assert.doesNotThrow(() => assertOperatorManagementAccess(admin, units, settings, {
+    role: "wali_kelas", unit: "GUDANG", operatorId: managerA, editing: true,
+  }));
+});
+
+test("Administrator unit aktif tidak dapat membuat atau mengubah Administrator", () => {
+  assert.throws(() => assertOperatorManagementAccess(admin, units, scoped(), {
+    role: "admin", unit: "GUDANG", operatorId: "628300000000@c.us",
+  }), { status: 403 });
+});
+
+test("Administrator unit aktif tidak dapat mengelola operator unit lain", () => {
+  const settings = scoped();
+  assert.throws(() => assertOperatorManagementAccess(admin, units, settings, {
+    role: "wali_kelas", unit: "KANTOR", operatorId: managerB, editing: true,
+  }), { status: 403 });
+  assert.throws(() => assertOperatorManagementAccess(admin, units, settings, {
+    role: "wali_kelas", unit: "GUDANG", operatorId: managerB, editing: true,
+  }), { status: 403 });
+  assert.throws(() => assertOperatorManagementAccess(admin, units, settings, {
+    role: "wali_kelas", unit: "GUDANG", operatorId: "628400000000@c.us", editing: true,
+  }), { status: 403 });
+});
+
+test("akun operator bersama hanya boleh diatur dari mode global", () => {
+  const settings = scoped();
+  settings[admin.id].activeUnit = "KANTOR";
+  assert.throws(() => assertOperatorManagementAccess(admin, units, settings, {
+    role: "wali_kelas", unit: "KANTOR", operatorId: managerB, editing: true,
+  }), { status: 403 });
+  assert.doesNotThrow(() => assertOperatorManagementAccess(admin, units, {}, {
+    role: "wali_kelas", unit: "KANTOR", operatorId: managerB, editing: true,
+  }));
 });
