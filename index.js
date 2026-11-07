@@ -1020,11 +1020,11 @@ function getStudentNotificationRecipients(studentId, kelasSiswa) {
   const kelas = loadKelas();
   const unitName = kelasSiswa?.namaKelas || "";
   const recipients = new Set(
-    adminIds(roles).filter((id) =>
-      adminUnitContext({ id, role: "admin" }, kelas, loadAdminUnitSettings())
-        .allowedUnits.includes(unitName) &&
-      receivesUnit(adminNotificationPreference(id, preferences, kelas), unitName)
-    )
+    adminIds(roles).filter((id) => {
+      const scope = adminUnitContext({ id, role: "admin" }, kelas, loadAdminUnitSettings());
+      return (scope.activeUnit ? scope.activeUnit === unitName : scope.allowedUnits.includes(unitName)) &&
+        receivesUnit(adminNotificationPreference(id, preferences, kelas), unitName);
+    })
   );
   if (kelasSiswa?.waliKelas) recipients.add(kelasSiswa.waliKelas);
   if (kelasSiswa?.siswa[studentId]?.orangTua) {
