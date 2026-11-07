@@ -98,6 +98,42 @@ test("Manajemen Pengguna tetap tersedia untuk Administrator unit tertentu", () =
   assert.doesNotMatch(server, /app\.post\("\/api\/admins", requireWebAdmin, requireWebGlobalAdmin/);
 });
 
+test("Administrator terbatas melihat akun sendiri dan mengatur notifikasi melalui form khusus", () => {
+  assert.match(dashboardPage, /admin\.isSelf \? openMyAccount\(\) : editAdmin\(admin\)/);
+  assert.match(dashboardPage, /admin\.isSelf \? 'Akun saya' : 'Aktif'/);
+  assert.match(dashboardPage, /get myAccount\(\)/);
+  assert.match(dashboardPage, /modal==='self'/);
+  assert.match(dashboardPage, /saveMyAccount\(\)/);
+  assert.match(dashboardPage, /\/api\/admin\/me/);
+  assert.match(dashboardPage, /x-model="selfForm\.currentPassword"/);
+  assert.match(dashboardPage, /x-model="selfForm\.newPassword"/);
+  assert.match(dashboardPage, /data\.adminUnitScope\?\.allowedUnits/);
+  assert.match(server, /id === user\.id && role === "admin"/);
+  assert.match(server, /isSelf: id === user\.id/);
+  assert.match(server, /app\.post\("\/api\/admin\/me", requireWebAdmin, selfAccountLimiter/);
+
+  const inlineScript = dashboardPage.match(/<script>\s*(function dashboard\(\)[\s\S]*?)<\/script>/);
+  assert.ok(inlineScript);
+  const context = {};
+  vm.runInNewContext(inlineScript[1] + "\nstate = dashboard();", context);
+  const state = context.state;
+  state.user = { role: "admin", nomor: "628800000001" };
+  state.data.adminUnitScope = {
+    globalMode: false, restricted: true, activeUnit: "GUDANG",
+    allowedUnits: ["GUDANG", "KANTOR"],
+  };
+  state.data.admins = [{
+    nomor: "628800000001", nama: "Admin Unit", username: "admin.unit",
+    role: "admin", isSelf: true, notificationMode: "all", notificationUnits: [],
+  }];
+  assert.equal(state.visibleTabs.some((tab) => tab.id === "admin"), true);
+  state.openMyAccount();
+  assert.equal(state.modal, "self");
+  assert.equal(state.selfForm.notificationMode, "selected");
+  assert.deepEqual([...state.selfForm.notificationUnits], ["GUDANG", "KANTOR"]);
+  assert.equal(state.myAccount.isSelf, true);
+});
+
 test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /label:"Absen Anggota"/);
   assert.doesNotMatch(dashboardPage, /teacherMenuOpen/);
