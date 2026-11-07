@@ -65,11 +65,36 @@ test("Administrator dapat mengatur cakupan notifikasi per Unit", () => {
   assert.match(dashboardPage, /@change="adminForm\.notificationUnits=\$event\.target\.value\?\[\$event\.target\.value\]:\[\]"/);
   assert.match(dashboardPage, /:value="selfForm\.notificationUnits\[0\] \|\| ''"/);
   assert.match(dashboardPage, /adminForm\.notificationUnits\.length!==1/);
+  assert.match(dashboardPage, /get adminNotificationRestricted\(\)/);
+  assert.match(dashboardPage, /syncAdminNotificationScope\(\)/);
+  assert.match(dashboardPage, /Menerima notifikasi/);
+  assert.match(dashboardPage, /Notifikasi hanya untuk unit/);
   assert.match(dashboardPage, /selfForm\.notificationUnits\.length!==1/);
   assert.doesNotMatch(dashboardPage, /x-model="adminForm\.notificationUnits"/);
   assert.doesNotMatch(dashboardPage, /x-model="selfForm\.notificationUnits"/);
   assert.match(server, /ADMIN_NOTIFICATIONS_PATH/);
   assert.match(server, /assertAdminNotificationPolicy/);
+});
+
+test("toggle notifikasi Administrator terbatas mengikuti unit terpilih", () => {
+  const inlineScript = dashboardPage.match(/<script>\s*(function dashboard\(\)[\s\S]*?)<\/script>/);
+  assert.ok(inlineScript);
+  const context = {};
+  vm.runInNewContext(inlineScript[1] + "\nstate = dashboard();", context);
+  const state = context.state;
+  state.user = { role: "admin" };
+  state.adminForm.role = "admin";
+  state.adminForm.accessMode = "selected";
+  state.adminForm.accessUnits = ["GUDANG"];
+  state.adminForm.notificationMode = "all";
+  state.adminForm.notificationUnits = ["KANTOR"];
+  state.syncAdminNotificationScope();
+  assert.equal(state.adminForm.notificationMode, "selected");
+  assert.deepEqual([...state.adminForm.notificationUnits], ["GUDANG"]);
+  state.adminForm.notificationMode = "none";
+  state.syncAdminNotificationScope();
+  assert.equal(state.adminForm.notificationMode, "none");
+  assert.deepEqual([...state.adminForm.notificationUnits], ["GUDANG"]);
 });
 
 test("petunjuk pengaturan lokasi mengikuti unit aktif dan role", () => {
@@ -144,7 +169,7 @@ test("Administrator terbatas melihat akun sendiri dan mengatur notifikasi melalu
   state.openMyAccount();
   assert.equal(state.modal, "self");
   assert.equal(state.selfForm.notificationMode, "selected");
-  assert.deepEqual([...state.selfForm.notificationUnits], ["GUDANG", "KANTOR"]);
+  assert.deepEqual([...state.selfForm.notificationUnits], ["GUDANG"]);
   assert.equal(state.myAccount.isSelf, true);
 });
 
