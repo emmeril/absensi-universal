@@ -2274,6 +2274,18 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
       (draft) => {
         const kontak = draft[KONTAK_PATH];
         const kelas = draft[KELAS_PATH];
+        const existingUnit = originalSiswaId
+          ? findKelasSiswa(kelas, originalSiswaId)?.namaKelas : "";
+        if (originalSiswaId && !existingUnit) {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), "", { global: true });
+        } else if (existingUnit) {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), existingUnit);
+        }
+        if (namaKelas) {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), namaKelas);
+        } else {
+          assertAdminUnitScope(req.webUser, kelas, loadAdminUnitSettings(), "", { global: true });
+        }
         if (namaKelas && !kelas[namaKelas]) {
           throw new Error("Unit tidak lagi tersedia.");
         }
@@ -2332,6 +2344,7 @@ app.post("/api/students", requireWebAdmin, async (req, res) => {
       }
     );
   } catch (error) {
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
     if (error.code === "NOT_FOUND") return res.status(404).json({ error: error.message });
     if (error.code === "ALREADY_EXISTS") return res.status(409).json({ error: error.message });
     if (error.name === "SequelizeUniqueConstraintError") {
@@ -2359,7 +2372,11 @@ app.delete("/api/students/:number", requireWebAdmin, async (req, res) => {
   const nomor = normalizeNomor(req.params.number);
   const siswaId = `${nomor}@c.us`;
   let foundStudent = false;
+  try {
   await updateJSONAtomic([KONTAK_PATH, KELAS_PATH, IZIN_PATH], (draft) => {
+    const kelasSiswa = findKelasSiswa(draft[KELAS_PATH], siswaId);
+    assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(),
+      kelasSiswa?.namaKelas, { global: !kelasSiswa });
     const kontak = draft[KONTAK_PATH];
     if (!kontak[siswaId]) return;
     foundStudent = true;
@@ -2384,6 +2401,12 @@ app.delete("/api/students/:number", requireWebAdmin, async (req, res) => {
   }, async ({ result, transaction }) => {
     if (result) await fillAttendanceSnapshot(siswaId, result, { transaction });
   });
+  } catch (error) {
+    if (error.code === "ADMIN_UNIT_SCOPE") {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+    throw error;
+  }
   if (!foundStudent) return res.status(404).json({ error: "Anggota tidak ditemukan." });
   for (const root of [FACE_DB, FACE_REC]) {
     deletePrivateFileSafely(path.join(root, `${nomor}.jpg`), root, `foto anggota ${nomor}`);
@@ -2539,6 +2562,10 @@ app.post("/api/settings/time", async (req, res) => {
   try {
     await updateJSON([JAM_PATH, KELAS_PATH], (draft) => {
       assertScheduleAccess(req.webUser, draft[KELAS_PATH], unit);
+      if (req.webUser.role === "admin") {
+        assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(),
+          unit, { global: !unit });
+      }
       if (unit) draft[KELAS_PATH][unit].jadwal = schedule;
       else draft[JAM_PATH] = { ...draft[JAM_PATH], ...schedule };
     });
@@ -2557,6 +2584,9 @@ app.delete("/api/settings/time", async (req, res) => {
   try {
     await updateJSON(KELAS_PATH, (draft) => {
       assertScheduleAccess(req.webUser, draft[KELAS_PATH], unit);
+      if (req.webUser.role === "admin") {
+        assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(), unit);
+      }
       delete draft[KELAS_PATH][unit].jadwal;
     });
   } catch (error) {
@@ -2580,6 +2610,7 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
       async (draft) => {
         const kontak = draft[KONTAK_PATH];
         const kelasSiswa = findKelasSiswa(draft[KELAS_PATH], siswaId);
+        assertAdminUnitScope(req.webUser, draft[KELAS_PATH], loadAdminUnitSettings(), kelasSiswa?.namaKelas);
         if (!kontak[siswaId]) throw new Error("Anggota sudah tidak terdaftar.");
         const attendance = await attendanceStatus(tanggal, siswaId);
         const permissionError = validatePermission({
@@ -2621,6 +2652,9 @@ app.post("/api/permissions", requireWebAdmin, async (req, res) => {
     if (error.code === "UNIT_BOT_UNAVAILABLE") {
       return res.status(409).json({ error: error.message });
     }
+    if (error.code === "ADMIN_UNIT_SCOPE") {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
     throw error;
   }
 
@@ -2634,16 +2668,23 @@ app.delete("/api/permissions/:date/:number", requireWebAdmin, async (req, res) =
   const siswaId = `${normalizeNomor(req.params.number)}@c.us`;
   const filesToDelete = [];
   let found = false;
+  try {
   await updateJSONAtomic(IZIN_PATH, (draft) => {
     const izin = draft[IZIN_PATH];
     const record = izin[req.params.date]?.[siswaId];
     if (!record) return;
+    assertAdminUnitScope(req.webUser, loadKelas(), loadAdminUnitSettings(),
+      record.kelas || findKelasSiswa(loadKelas(), siswaId)?.namaKelas);
     found = true;
     if (record.bukti) filesToDelete.push(record.bukti);
     if (record.selfie) filesToDelete.push(record.selfie);
     delete izin[req.params.date][siswaId];
     if (!Object.keys(izin[req.params.date]).length) delete izin[req.params.date];
   }, ({ transaction }) => cancelNotificationsForMediaPaths(filesToDelete, { transaction }));
+  } catch (error) {
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
+    throw error;
+  }
   if (!found) return res.status(404).json({ error: "Izin tidak ditemukan." });
   for (const file of filesToDelete) {
     deletePrivateFileSafely(file, IZIN_BUKTI_DIR, `bukti izin ${siswaId}`);
@@ -2654,6 +2695,14 @@ app.delete("/api/permissions/:date/:number", requireWebAdmin, async (req, res) =
 app.get("/api/permissions/:date/:number/evidence", (req, res) => {
   const siswaId = `${normalizeNomor(req.params.number)}@c.us`;
   const permission = loadIzin()[req.params.date]?.[siswaId];
+  if (req.webUser.role === "admin" && permission) {
+    try {
+      assertAdminUnitScope(req.webUser, loadKelas(), loadAdminUnitSettings(),
+        permission.kelas || findKelasSiswa(loadKelas(), siswaId)?.namaKelas);
+    } catch (error) {
+      return res.status(error.status || 403).json({ error: error.message });
+    }
+  }
   if (
     req.webUser.role === "wali_kelas" &&
     permission?.waliKelas !== req.webUser.id &&
@@ -2674,6 +2723,7 @@ async function buildReportRows(user, tanggal) {
   const izin = loadJSONSelected(IZIN_PATH, (records) => records[tanggal] || {});
   const kelas = loadKelas();
   const kelasWali = kelasUntukWali(kelas, user.id);
+  const scope = adminUnitContext(user, kelas, loadAdminUnitSettings());
   const studentIds = new Set([
     ...Object.keys(kontak),
     ...Object.keys(storage),
@@ -2681,7 +2731,13 @@ async function buildReportRows(user, tanggal) {
   ]);
   return [...studentIds]
     .filter((id) => {
-      if (user.role === "admin") return true;
+      if (user.role === "admin") {
+        if (scope.globalMode) return true;
+        const snapshot = storage[id]?.masuk || storage[id]?.pulang || izin[id];
+        const currentUnit = findKelasSiswa(kelas, id)?.namaKelas;
+        const unit = snapshot?.kelas || currentUnit;
+        return scope.activeUnit ? unit === scope.activeUnit : scope.allowedUnits.includes(unit);
+      }
       if (findKelasSiswa(kelasWali, id)) return true;
       const snapshot = storage[id]?.masuk || storage[id]?.pulang || izin[id];
       return snapshot?.waliKelas === user.id;
