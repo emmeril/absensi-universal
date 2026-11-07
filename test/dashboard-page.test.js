@@ -85,6 +85,14 @@ test("aksi pengelolaan unit hanya terlihat pada Administrator global", () => {
   assert.match(server, /app\.delete\("\/api\/classes\/:name", requireWebAdmin, requireWebGlobalAdmin/);
 });
 
+test("form hak akses Administrator hanya menerima satu unit", () => {
+  assert.match(dashboardPage, /Pilih satu unit<select :value="adminForm\.accessUnits\[0\] \|\| ''"/);
+  assert.match(dashboardPage, /@change="adminForm\.accessUnits=\$event\.target\.value\?\[\$event\.target\.value\]:\[\]"/);
+  assert.match(dashboardPage, /adminForm\.accessUnits\.length!==1/);
+  assert.doesNotMatch(dashboardPage, /x-model="adminForm\.accessUnits"/);
+  assert.match(server, /adminUnitContext\(\{ id, role: "admin" \}, semuaKelas, loadAdminUnitSettings\(\)\)\.allowedUnits/);
+});
+
 test("Manajemen Pengguna tetap tersedia untuk Administrator unit tertentu", () => {
   assert.match(dashboardPage, /item\.id!=="brand"/);
   assert.match(dashboardPage, /get canManageAllUsers\(\)/);
