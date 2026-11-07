@@ -70,13 +70,27 @@ function fixture({ restricted = true } = {}) {
       }
       accounts[username] = { userId, passwordHash };
     },
-    requestedAdminNotificationPreference(body, units) {
+    requestedAdminNotificationPreference(body, units, scope) {
       if (!["all", "selected", "none"].includes(body.notificationMode)) {
         const error = Error("Pilihan notifikasi tidak valid.");
         error.code = "NOTIFICATION_PREFERENCE";
         throw error;
       }
       const allowed = Array.isArray(body.notificationUnits) ? body.notificationUnits : [];
+      if (scope?.restricted) {
+        if (!scope.activeUnit) {
+          const error = Error("Unit Administrator belum ditetapkan.");
+          error.code = "NOTIFICATION_PREFERENCE";
+          throw error;
+        }
+        if (body.notificationMode === "selected" &&
+            allowed.some((unit) => unit !== scope.activeUnit)) {
+          throw scopeError("Unit notifikasi tidak diizinkan.");
+        }
+        return body.notificationMode === "none"
+          ? { mode: "none", units: [] }
+          : { mode: "selected", units: [scope.activeUnit] };
+      }
       if (body.notificationMode === "selected" &&
           (allowed.length !== 1 || !Object.hasOwn(units, allowed[0]))) {
         const error = Error("Pilih tepat satu unit notifikasi.");
@@ -141,6 +155,15 @@ test("administrator unit tertentu dapat mengatur notifikasi untuk unitnya", asyn
   assert.equal(result.status, 200);
   assert.equal(f.state.notifications[id].mode, "none");
   assert.equal(f.state.settings[id].mode, "selected");
+});
+
+test("admin terbatas dapat mengaktifkan notifikasi tanpa memilih unit lagi", async () => {
+  const f = fixture();
+  const result = await f.post({
+    ...baseForm(), notificationMode: "selected", notificationUnits: [],
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(f.state.notifications[id], { mode: "selected", units: ["GUDANG"] });
 });
 
 test("admin terbatas tidak dapat mengambil notifikasi unit lain", async () => {
