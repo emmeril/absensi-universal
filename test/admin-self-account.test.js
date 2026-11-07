@@ -46,6 +46,7 @@ function fixture({ restricted = true } = {}) {
     KELAS_PATH: "units",
     WEB_SESSIONS_PATH: "sessions",
     adminUnitContext, scopeError, webSessions,
+    loadDashboardAccounts: () => state.accounts,
     normalizeUsername: (value) => String(value || "").trim().toLowerCase(),
     toTitleCase: (value) => String(value || "").trim(),
     isValidUsername: (value) => /^[a-z0-9][a-z0-9._-]{2,31}$/.test(value),
