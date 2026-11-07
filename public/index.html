@@ -266,7 +266,13 @@
                   <div class="schedule-row"><dt>Rentang absen pulang</dt><dd class="font-bold" x-text="`${timeSummary.mulaiPulang} - ${timeSummary.selesaiPulang}`"></dd><dd class="schedule-help">Absen pulang hanya diterima pada rentang ini</dd></div>
                 </dl>
               </div>
-              <p class="text-sm text-slate-600">Administrator dapat mengatur lokasi tiap unit dengan mengirim <strong>!lokasi</strong> ke bot unit tersebut. Jika bot melayani beberapa unit, gunakan <strong>!lokasi NAMA UNIT</strong>.</p>
+              <div x-show="user?.role === 'admin'" x-cloak class="space-y-1 text-sm text-slate-600">
+                <p class="font-semibold text-slate-700">Cara mengubah lokasi absensi</p>
+                <p x-show="!data.adminUnitScope?.activeUnit">Pilih satu unit melalui menu <strong>Unit aktif</strong> di navbar.</p>
+                <p x-show="data.adminUnitScope?.activeUnit">Unit yang akan diatur: <strong x-text="data.adminUnitScope?.activeUnit"></strong>.</p>
+                <p>Buka chat WhatsApp bot milik unit tersebut, kirim <strong>!lokasi</strong>, lalu pilih <strong>Kirim lokasi Anda saat ini</strong> ketika bot memintanya.</p>
+              </div>
+              <p x-show="user?.role !== 'admin'" x-cloak class="text-sm text-slate-600">Titik lokasi absensi diatur oleh Administrator. Hubungi Administrator jika lokasinya perlu diubah.</p>
             </div>
           </div>
         </div>
