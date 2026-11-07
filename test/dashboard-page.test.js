@@ -61,7 +61,13 @@ test("Administrator dapat mengatur cakupan notifikasi per Unit", () => {
   assert.match(dashboardPage, /value="selected"/);
   assert.match(dashboardPage, /value="none"/);
   assert.match(dashboardPage, /:disabled="!canDisableAdminNotifications"/);
-  assert.match(dashboardPage, /x-model="adminForm\.notificationUnits"/);
+  assert.match(dashboardPage, /:value="adminForm\.notificationUnits\[0\] \|\| ''"/);
+  assert.match(dashboardPage, /@change="adminForm\.notificationUnits=\$event\.target\.value\?\[\$event\.target\.value\]:\[\]"/);
+  assert.match(dashboardPage, /:value="selfForm\.notificationUnits\[0\] \|\| ''"/);
+  assert.match(dashboardPage, /adminForm\.notificationUnits\.length!==1/);
+  assert.match(dashboardPage, /selfForm\.notificationUnits\.length!==1/);
+  assert.doesNotMatch(dashboardPage, /x-model="adminForm\.notificationUnits"/);
+  assert.doesNotMatch(dashboardPage, /x-model="selfForm\.notificationUnits"/);
   assert.match(server, /ADMIN_NOTIFICATIONS_PATH/);
   assert.match(server, /assertAdminNotificationPolicy/);
 });
