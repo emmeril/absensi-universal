@@ -121,6 +121,11 @@ const loginLimiter = createRateLimiter({
   limit: 10,
   message: "Terlalu banyak percobaan login dari koneksi ini. Coba lagi nanti.",
 });
+const selfAccountLimiter = createRateLimiter({
+  windowMs: 10 * 60_000,
+  limit: 15,
+  message: "Terlalu banyak percobaan mengubah akun. Coba lagi nanti.",
+});
 const cameraRequestLimiter = createRateLimiter({
   windowMs: 5 * 60_000,
   limit: 40,
@@ -1882,6 +1887,105 @@ app.post("/api/admin/active-unit", requireWebAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/admin/me", requireWebAdmin, selfAccountLimiter, async (req, res) => {
+  const body = req.body || {};
+  const allowedFields = new Set([
+    "nama", "username", "currentPassword", "newPassword",
+    "notificationMode", "notificationUnits",
+  ]);
+  if (Object.keys(body).some((field) => !allowedFields.has(field))) {
+    return res.status(400).json({ error: "Pengaturan hak akses dan role tidak dapat diubah melalui Akun Saya." });
+  }
+
+  const id = req.webUser.id;
+  const nama = toTitleCase(String(body.nama || "").trim());
+  const username = normalizeUsername(body.username);
+  const newPassword = String(body.newPassword || "");
+  if (nama.length < 3) return res.status(400).json({ error: "Nama pengguna minimal 3 karakter." });
+  if (!isValidUsername(username)) {
+    return res.status(400).json({ error: "Username harus 3-32 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung." });
+  }
+  if (newPassword && !isValidPassword(newPassword)) {
+    return res.status(400).json({ error: "Password baru harus 10-128 karakter." });
+  }
+  if (typeof body.notificationMode !== "string") {
+    return res.status(400).json({ error: "Pilih pengaturan notifikasi terlebih dahulu." });
+  }
+
+  const account = dashboardAccountForUser(loadDashboardAccounts(), id);
+  if (!account) return res.status(404).json({ error: "Akun dashboard tidak ditemukan." });
+  const usernameChanged = username !== account.username;
+  const passwordChanged = Boolean(newPassword);
+  if ((usernameChanged || passwordChanged) &&
+      !(await verifyPassword(body.currentPassword, account.passwordHash))) {
+    return res.status(403).json({ error: "Password saat ini salah." });
+  }
+
+  const nextPasswordHash = passwordChanged ? await hashPassword(newPassword) : account.passwordHash;
+  const activeSessionKey = webSessionKey(parseCookies(req).absensi_session);
+  let savedPreference;
+  try {
+    await updateJSON([
+      ROLE_PATH, USER_NAMES_PATH, DASHBOARD_ACCOUNTS_PATH,
+      ADMIN_NOTIFICATIONS_PATH, ADMIN_UNITS_PATH, KELAS_PATH, WEB_SESSIONS_PATH,
+    ], (draft) => {
+      if (draft[ROLE_PATH][id] !== "admin") {
+        throw scopeError("Hanya Administrator yang dapat mengubah pengaturan ini.");
+      }
+      const latestAccount = dashboardAccountForUser(draft[DASHBOARD_ACCOUNTS_PATH], id);
+      if (!latestAccount || latestAccount.username !== account.username ||
+          latestAccount.passwordHash !== account.passwordHash) {
+        throw scopeError("Akun telah diperbarui dari sesi lain. Muat ulang dan coba lagi.", 409);
+      }
+      const scope = adminUnitContext(req.webUser, draft[KELAS_PATH], draft[ADMIN_UNITS_PATH]);
+      const preference = requestedAdminNotificationPreference(body, draft[KELAS_PATH]);
+      if (preference.mode === "selected" &&
+          preference.units.some((unit) => !scope.allowedUnits.includes(unit))) {
+        throw scopeError("Anda hanya dapat memilih notifikasi untuk unit yang diizinkan.");
+      }
+      draft[ADMIN_NOTIFICATIONS_PATH][id] = preference;
+      assertAdminNotificationPolicy(
+        draft[ROLE_PATH], draft[ADMIN_NOTIFICATIONS_PATH], draft[KELAS_PATH]
+      );
+      draft[USER_NAMES_PATH][id] = nama;
+      setDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], {
+        username, userId: id, passwordHash: nextPasswordHash,
+      });
+      for (const [key, session] of Object.entries(draft[WEB_SESSIONS_PATH])) {
+        if (session?.id !== id) continue;
+        if (passwordChanged && key !== activeSessionKey) {
+          delete draft[WEB_SESSIONS_PATH][key];
+        } else {
+          session.username = username;
+        }
+      }
+      savedPreference = preference;
+    });
+  } catch (error) {
+    if (error.code === "USERNAME_EXISTS") return res.status(409).json({ error: error.message });
+    if (error.code === "ADMIN_UNIT_SCOPE") return res.status(error.status || 403).json({ error: error.message });
+    if (error.code === "NOTIFICATION_PREFERENCE") return res.status(400).json({ error: error.message });
+    if (error.code === "NOTIFICATION_POLICY") {
+      return res.status(400).json({
+        error: "Setiap unit harus tetap memiliki penerima notifikasi Administrator. Pengaturan ini tidak dapat disimpan.",
+      });
+    }
+    throw error;
+  }
+
+  for (const [key, session] of webSessions) {
+    if (session?.id !== id) continue;
+    if (passwordChanged && key !== activeSessionKey) webSessions.delete(key);
+    else session.username = username;
+  }
+  req.webUser.username = username;
+  res.json({
+    ok: true, nama, username,
+    notificationMode: savedPreference.mode,
+    notificationUnits: savedPreference.units,
+  });
+});
+
 async function dashboardData(user) {
   const kontak = loadJSON(KONTAK_PATH);
   const semuaKelas = loadKelas();
@@ -1952,6 +2056,7 @@ async function dashboardData(user) {
     admins: user.role === "admin" ? Object.entries(roles)
       .filter(([id, role]) => {
         if (adminScope.globalMode) return ["admin", "wali_kelas"].includes(role);
+        if (id === user.id && role === "admin") return true;
         if (role !== "wali_kelas" || !adminScope.activeUnit) return false;
         const assigned = operatorUnitsForUser(semuaKelas, id);
         return assigned.length === 1 && assigned[0] === adminScope.activeUnit;
@@ -1965,6 +2070,7 @@ async function dashboardData(user) {
           nama: dashboardUserName(id, role),
           username: dashboardAccountForUser(accounts, id)?.username || "",
           role,
+          isSelf: id === user.id,
           className: Object.entries(kelas).find(([, data]) => data.waliKelas === id)?.[0] || "",
           notificationMode: notificationPreference.mode,
           notificationUnits: notificationPreference.units,
@@ -1972,6 +2078,11 @@ async function dashboardData(user) {
           accessUnits: loadAdminUnitSettings()[id]?.units || [],
         };
       }) : [],
+    selfNotificationCanDisable: user.role === "admin" && !notificationPolicyError({
+      adminIds: adminIds(roles),
+      preferences: { ...adminNotificationPreferences, [user.id]: { mode: "none", units: [] } },
+      unitNames: Object.keys(semuaKelas),
+    }),
     currentUser: {
       nomor: user.nomor,
       username: user.username,
