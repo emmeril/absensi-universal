@@ -851,6 +851,12 @@ function setDashboardAccount(accounts, { username, userId, passwordHash }) {
   accounts[username] = { userId, passwordHash };
 }
 
+function assertGlobalAdminExists(roles, settings) {
+  const hasGlobal = Object.entries(roles).some(([id, role]) =>
+    role === "admin" && settings[id]?.mode !== "selected");
+  if (!hasGlobal) throw scopeError("Minimal satu Administrator harus memiliki akses Seluruh unit.", 400);
+}
+
 function removeDashboardAccount(accounts, userId) {
   for (const [username, account] of Object.entries(accounts || {})) {
     if (account?.userId === userId) delete accounts[username];
@@ -2076,6 +2082,7 @@ app.post("/api/admins", requireWebAdmin, requireWebGlobalAdmin, async (req, res)
         draft[ADMIN_NOTIFICATIONS_PATH],
         draft[KELAS_PATH]
       );
+      assertGlobalAdminExists(draft[ROLE_PATH], draft[ADMIN_UNITS_PATH]);
       setDashboardAccount(draft[DASHBOARD_ACCOUNTS_PATH], {
         username,
         userId: id,
@@ -2121,6 +2128,7 @@ app.delete("/api/admins/:number", requireWebAdmin, requireWebGlobalAdmin, async 
           draft[ADMIN_NOTIFICATIONS_PATH],
           draft[KELAS_PATH]
         );
+        assertGlobalAdminExists(draft[ROLE_PATH], draft[ADMIN_UNITS_PATH]);
       }
     });
   } catch (error) {
