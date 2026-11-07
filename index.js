@@ -1913,10 +1913,13 @@ async function dashboardData(user) {
       izin: izinHariIni[id] || null,
     };
   });
-  const whatsappBots = whatsapp.statuses().filter((bot) =>
-    bot.role !== "tu" && (user.role === "admin"
+  const whatsappBots = whatsapp.statuses()
+    .filter((bot) => bot.role !== "tu" && (user.role === "admin"
       ? adminScope.globalMode || bot.classes?.some((name) => Object.hasOwn(kelas, name))
-      : bot.expectedNumber === user.nomor));
+      : bot.expectedNumber === user.nomor))
+    .map((bot) => user.role === "admin" && !adminScope.globalMode
+      ? { ...bot, classes: (bot.classes || []).filter((name) => Object.hasOwn(kelas, name)) }
+      : bot);
 
   return {
     tanggal: today,
@@ -2454,6 +2457,7 @@ app.post(
 app.post(
   "/api/settings/brand",
   requireWebAdmin,
+  requireWebGlobalAdmin,
   upload.single("logo"),
   async (req, res) => {
     const name = normalizeBrandName(req.body.name);
@@ -2504,7 +2508,7 @@ app.post(
   }
 );
 
-app.delete("/api/settings/brand/logo", requireWebAdmin, async (_req, res) => {
+app.delete("/api/settings/brand/logo", requireWebAdmin, requireWebGlobalAdmin, async (_req, res) => {
   const current = loadBrandSettings();
   await saveJSON(BRAND_PATH, {
     ...current,
