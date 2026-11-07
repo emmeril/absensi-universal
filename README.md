@@ -17,6 +17,7 @@ Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu,
 - Validasi GPS terhadap titik lokasi kegiatan.
 - Izin dua tahap dengan selfie dan bukti pendukung.
 - Pengelolaan anggota, unit, jadwal, izin, dan pengguna.
+- Jadwal absensi per unit, dengan jadwal organisasi sebagai acuan awal.
 - Bot WhatsApp anggota untuk setiap unit.
 - Notifikasi kepada admin, pengelola unit, dan kontak darurat.
 - Laporan harian dan ekspor Excel.
@@ -28,7 +29,7 @@ Istilah tersebut sengaja bersifat umum. Unit dapat berarti divisi, cabang, regu,
 | Peran | Fungsi |
 | --- | --- |
 | Administrator | Mengelola seluruh data, akun, konfigurasi, dan laporan. |
-| Pengelola Unit | Mengelola anggota dan Bot Anggota pada unit yang menjadi tanggung jawabnya. |
+| Pengelola Unit | Mengelola anggota, jadwal, dan Bot Anggota pada unit yang menjadi tanggung jawabnya. |
 
 Dashboard memakai role `admin` dan `wali_kelas`. Data role lama tetap disimpan agar pembaruan tidak menghapus data secara otomatis, tetapi role tersebut tidak dapat masuk ke dashboard.
 
@@ -116,6 +117,15 @@ Buka dashboard di `http://localhost:3200`. Setelah masuk:
 3. Tambahkan anggota dan foto referensinya.
 4. Hubungkan nomor pada **Pengaturan > Bot Anggota**.
 5. Atur titik lokasi kegiatan dengan perintah `!lokasi`.
+6. Buka **Pengaturan Jadwal**, pilih unit, lalu klik **Ubah jadwal**.
+
+Unit yang belum mempunyai jadwal khusus mengikuti jadwal organisasi. Administrator
+dapat mengubah jadwal organisasi dan semua unit. Pengelola Unit hanya dapat mengubah
+jadwal unitnya sendiri. Pilihan **Ikuti jadwal organisasi** menghapus jadwal khusus
+unit dan memakai kembali acuan organisasi. Jam masuk, jam pulang, toleransi, dan
+rentang absensi unit berlaku pada perintah WhatsApp serta saat absensi kamera dicatat.
+Jadwal khusus disimpan bersama unit, sehingga ikut berpindah saat unit berganti nama
+dan ikut dihapus saat unit dihapus. Jadwal organisasi yang sudah tersimpan tetap dipakai.
 
 Untuk produksi dengan PM2:
 

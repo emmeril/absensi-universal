@@ -282,7 +282,7 @@ function automaticFlowFixture() {
   const outbox = [];
   const attendanceKey = (record) => `${record.tanggal}:${record.siswaId}:${record.tipe}`;
   const context = {
-    ...require("../lib/attendance-rules"), crypto, Buffer,
+    ...require("../lib/attendance-rules"), ...require("../lib/unit-schedule"), crypto, Buffer,
     STORAGE_PATH: "storage", IZIN_PATH: "permissions", KONTAK_PATH: "contacts",
     JAM_PATH: "time", LOKASI_PATH: "location", IZIN_BUKTI_DIR: "evidence",
     ATTENDANCE_PHOTO_DIR: "attendance",
@@ -371,6 +371,31 @@ test("automatic attendance still rejects permission conflicts, outside location,
     if (mode === "removed") await state.update("contacts", (draft) => { delete draft.contacts.student; });
     await assert.rejects(context.catatAbsensiKamera("student", "masuk", {}, {}));
     assert.equal(attendanceRecords.size, 0);
+  }
+});
+
+test("kamera memakai rentang, toleransi, dan status pulang unit saat pencatatan", async () => {
+  for (const [tipe, jadwal, expected] of [
+    ["masuk", { masuk: "06:30:00", toleransi: 10 }, "Terlambat"],
+    ["masuk", { masuk: "06:50:00", toleransi: 10 }, "Tepat Waktu"],
+    ["pulang", { pulang: "08:00:00" }, "Pulang Cepat"],
+    ["pulang", { pulang: "06:00:00" }, "Sesuai Waktu"],
+    ["masuk", { mulaiMasuk: "08:00:00", selesaiMasuk: "10:00:00" }, null],
+    ["pulang", { mulaiPulang: "16:00:00", selesaiPulang: "19:00:00" }, null],
+  ]) {
+    const { context, attendanceRecords } = automaticFlowFixture();
+    context.findKelasSiswa = () => ({ namaKelas: "UNIT UJI", waliKelas: "manager", jadwal });
+    context.normalizeJam = (value) => String(value).length === 5 ? `${value}:00` : value;
+    vm.runInNewContext(source.slice(source.indexOf("function getAttendanceWindow("), source.indexOf("function getStudentNotificationRecipients(")), context);
+    const foto = { mimetype: "image/jpeg", buffer: Buffer.from("test") };
+    const record = context.catatAbsensiKamera("student", tipe, {}, foto);
+    if (expected) {
+      assert.equal((await record).status, expected);
+      assert.equal(attendanceRecords.get(`2026-09-09:student:${tipe}`).status, expected);
+    } else {
+      await assert.rejects(record, /hanya dapat dilakukan pukul/);
+      assert.equal(attendanceRecords.size, 0);
+    }
   }
 });
 
