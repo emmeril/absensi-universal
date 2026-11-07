@@ -26,7 +26,7 @@ function makeFixture() {
       shared: { userId: sharedOperator, passwordHash: "hash" },
     },
     units: {
-      [unitA]: { waliKelas: sharedOperator, siswa: {} },
+      [unitA]: { waliKelas: "", siswa: {} },
       [unitB]: { waliKelas: otherOperator, siswa: {} },
     },
     contacts: {},
@@ -172,6 +172,7 @@ test("unit admin can delete operator assigned solely to its active unit", async 
 
 test("operator account shared by multiple units cannot be modified by local admin", async () => {
   const f = makeFixture();
+  f.state.units[unitA].waliKelas = sharedOperator;
   f.state.units[unitB].waliKelas = sharedOperator;
   const remove = await f.call(actor, "DELETE", "/api/admins/:number", {
     paramsNumber: sharedOperator.replace("@c.us", ""),
