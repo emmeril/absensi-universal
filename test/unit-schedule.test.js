@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const express = require("express");
 const { JsonState } = require("../lib/json-state");
 const { DEFAULT_SCHEDULE, resolveUnitSchedule, assertScheduleAccess } = require("../lib/unit-schedule");
+const { adminUnitContext, assertAdminUnitScope, renameAdminUnitSettings, scopeError } = require("../lib/admin-unit-scope");
 
 const source = fs.readFileSync(require.resolve("../index.js"), "utf8");
 const page = fs.readFileSync(require.resolve("../public/index.html"), "utf8");
@@ -38,7 +39,7 @@ async function apiFixture(t) {
     initial: {
       time: { ...DEFAULT_SCHEDULE, masuk: "06:00:00" },
       units: { A: { siswa: {}, waliKelas: "manager" }, B: { siswa: {}, waliKelas: "other" } },
-      roles: { admin: "admin" }, preferences: {},
+      roles: { admin: "admin" }, preferences: {}, adminUnits: {},
     },
     writeBatch: async (data) => writes.push(structuredClone(data)),
   });
@@ -46,11 +47,13 @@ async function apiFixture(t) {
   app.use(express.json());
   const context = {
     app, assertScheduleAccess, resolveUnitSchedule,
-    JAM_PATH: "time", KELAS_PATH: "units", ROLE_PATH: "roles", ADMIN_NOTIFICATIONS_PATH: "preferences",
+    adminUnitContext, assertAdminUnitScope, renameAdminUnitSettings, scopeError,
+    JAM_PATH: "time", KELAS_PATH: "units", ROLE_PATH: "roles", ADMIN_NOTIFICATIONS_PATH: "preferences", ADMIN_UNITS_PATH: "adminUnits",
     webUser: (req) => users[req.headers["x-test-user"]] || null,
     isValidTime: (value) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value),
     updateJSON: (keys, mutate) => state.update(keys, mutate),
     loadKelas: () => state.read("units"),
+    loadAdminUnitSettings: () => state.read("adminUnits"),
     assertAdminNotificationPolicy() {},
     adminNotificationPreference: () => ({ mode: "all", units: [] }),
     receivesUnit: () => true,
@@ -211,6 +214,8 @@ test("perintah WhatsApp memakai rentang unit dan tetap memakai jadwal lama tanpa
       const replies = [];
       const context = {
         Date, safeAsyncListener, resolveUnitSchedule, isWithinAttendanceWindow, validateAttendance,
+        adminUnitContext: () => ({ activeUnit: "" }),
+        assertAdminUnitScope: () => {}, scopeFor: () => ({ activeUnit: "" }), loadAdminUnitSettings: () => ({}),
         console: { log() {}, error(...args) { throw new Error(args.join(" ")); } },
         KONTAK_PATH: "contacts", ROLE_PATH: "roles", JAM_PATH: "time", FACE_REC: "photos",
         whatsapp: { on: (_name, handler) => { listener = handler; } },
