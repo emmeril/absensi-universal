@@ -179,6 +179,18 @@ test("sidebar hanya memuat kelompok absen anggota", () => {
   assert.match(dashboardPage, /\["brand","whatsapp","admin"\]/);
 });
 
+test("sesi WhatsApp aktif menampilkan tombol reset QR dengan status loading", () => {
+  assert.match(dashboardPage, /Hapus sesi dan buat QR baru/);
+  assert.match(dashboardPage, /whatsappResetKey === bot.key/);
+  assert.match(dashboardPage, /Command terakhir diterima/);
+  assert.match(dashboardPage, /await this.request\(\`\/api\/whatsapp\/\$\{encodeURIComponent\(bot.key\)\}\/reset\`/);
+  const script = dashboardPage.match(/<script>\s*(function dashboard\(\)[\s\S]*?)<\/script>/);
+  assert.ok(script);
+  const context = {};
+  vm.runInNewContext(script[1] + "\nstate = dashboard();", context);
+  assert.equal(context.state.whatsappResetKey, "");
+});
+
 test("koneksi WhatsApp hanya menampilkan bot anggota", () => {
   assert.match(server, /bot\.role !== "tu"/);
   assert.match(dashboardPage, /Nomor pengelola unit/);
