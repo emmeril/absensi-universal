@@ -131,6 +131,9 @@ Buka dashboard di `http://localhost:3200`. Setelah masuk:
 2. Buat akun pengelola unit bila diperlukan.
 3. Tambahkan anggota dan foto referensinya.
 4. Hubungkan nomor pada **Pengaturan > Bot Anggota**.
+   - Jika bot sudah terhubung tetapi perlu login ulang, pilih **Hapus sesi dan buat QR baru** pada kartu bot, konfirmasi, lalu pindai QR dari perangkat yang benar. Tindakan ini menghapus kredensial lokal dan mencoba logout perangkat tertaut sebelumnya; tidak menghapus unit, pengguna, atau data absensi.
+   - Status **Terhubung** menunjukkan koneksi Baileys sudah terbuka, bukan jaminan setiap pesan berhasil diproses. Lihat waktu **Command terakhir diterima** dan log PM2 untuk membedakan masalah pesan masuk, izin nomor, serta pengiriman balasan.
+   - Reset hanya satu sesi bot yang dipilih. Jangan menjalankan lebih dari satu instance PM2 menggunakan direktori `BAILEYS_AUTH_DATA_PATH` yang sama.
 5. Kirim `!lokasi` ke bot masing-masing unit, lalu bagikan **lokasi Anda saat ini** melalui WhatsApp.
 6. Buka **Pengaturan Jadwal**, pilih unit, lalu klik **Ubah jadwal**.
 
